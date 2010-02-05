@@ -55,6 +55,9 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     };
     
     bool doing_fake_crops = false;
+    /*
+        A cropped frame and list of faces detected in that frame
+    */
     struct CroppedFrame {
 	CvRect _rect;
 	CvSeq* _faces;
@@ -68,33 +71,17 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	}
     };
     
+    /*
+        A rectangle within which a face was found and 
+        a list of CroppedFrames whose search rects may be based on the
+        face rectangle in some way
+    */
     struct CroppedFrameList {
 	CvRect _face;		// main face
-	double _dx, _dy;	// Distance between successive sub-frames
-	std::vector<CroppedFrame> _x;
-	std::vector<CroppedFrame> _y;
+	std::vector<CroppedFrame> _frames;
     };
     
-    CroppedFrameList makeFakeFrameList(const MultiFrameParams* mp, CvRect face) {
-        CroppedFrameList frameList;
-	frameList._face = face;
-	bool on = false, middle;
-	frameList._x.resize(mp->_num_inc_x);
-	for (int i = 0; i < mp->_num_inc_x; i++) {
-	    middle = (i == mp->_num_inc_x/2 || i==  mp->_num_inc_x/2 -1);
-	    frameList._x[i]._fakeFaces = (on || middle);
-	    on = !on;
-	}
-	on = false;
-	frameList._y.resize(mp->_num_inc_y);
-	for (int i = 0; i < mp->_num_inc_y; i++) {
-	    middle = (i == mp->_num_inc_y/2 || i==  mp->_num_inc_y/2 -1);
-	    frameList._y[i]._fakeFaces = (on || middle);
-	    on = !on;
-	}
-        return frameList;	
-    }
-    
+      
     
     
     int scaleX(const DrawParams* wp, int x) {
@@ -122,6 +109,16 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	p2.y = scaleY(wp, p2in.y);
 	cvLine(wp->_draw_image, p1, p2, color, 3, 8, 0);
     }
+      
+    void drawMarker(const DrawParams* wp, CvPoint center, int diameter, CvScalar color) {
+	CvRect r;
+        r.x = center.x - diameter/2;
+        r.y = center.y - diameter/2;
+        r.width = diameter;
+        r.height = diameter;
+        drawRect(wp , r, color);
+    }
+
     
     CvPoint getCenter(CvRect r) {
 	CvPoint c;
@@ -131,41 +128,23 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
     
     void drawCropFrames(const DrawParams* wp, const MultiFrameParams* mp, const CroppedFrameList* frameList) {
-	
 	CvScalar onColor  = CV_RGB(255,255,0);
 	CvScalar offColor = CV_RGB(255,0,0);
 	CvScalar mainColor = CV_RGB(0,0,255);
 	CvScalar color;
-		
-	CvPoint center = getCenter(frameList->_face);
+	int      diameter = (frameList->_face.width + frameList->_face.height)/2;	
 	
 	drawRect(wp, frameList->_face, mainColor);
-	// E-W
-	CvPoint p1, p2;
-	p1.y = p2.y = center.y;
-	for (int i = 0; i < frameList->_x.size(); i++) {
-	 //   p1.x = center.x - radius + cvRound((double)i/(double)( mp->_num_inc_x) * 2.0 * (double)radius);
-	 //   p2.x = center.x - radius + cvRound((double)(i+1)/(double)( mp->_num_inc_x) * 2.0 * (double)radius);
-	    CvPoint c = getCenter(frameList->_x[i]._rect);
-	    p1.x = c.x - cvRound(frameList->_dy/2.0);
-	    p2.x = c.x + cvRound(frameList->_dy/2.0);
-	    color = frameList->_x[i].hasFaces() ? onColor : offColor;
-	    drawLine(wp, p1, p2, color);
-	    drawRect(wp, frameList->_x[i]._rect, color);
+        drawMarker(wp, getCenter(frameList->_face), diameter, mainColor);
+	
+	for (int i = 0; i < frameList->_frames.size(); i++) {
+            CvRect r = frameList->_frames[i]._rect;
+	    CvPoint c = getCenter(r);
+            color = frameList->_frames[i].hasFaces() ? onColor : offColor;
+            drawRect(wp, r, color);
+            drawMarker(wp, getCenter(r), diameter, color);  
 	}
-	// N-S
-	p1.x = p2.x = center.x;
-	for (int i = 0; i < mp->_num_inc_y; i++) {
-	 //   p1.y = center.y - radius + cvRound((double)i/(double)( mp->_num_inc_y) * 2.0 * (double)radius);
-	 //   p2.y = center.y - radius + cvRound((double)(i+1)/(double)( mp->_num_inc_y) * 2.0 * (double)radius);
-	    CvPoint c = getCenter(frameList->_y[i]._rect);
-	    p1.y = c.y - cvRound(frameList->_dx/2.0);
-	    p2.y = c.y + cvRound(frameList->_dx/2.0);
-	    color = frameList->_x[i].hasFaces() ? onColor : offColor;;
-	    drawLine(wp, p1, p2, color);
-	    drawRect(wp, frameList->_y[i]._rect, color);
-	}		 
-    }
+   }
     
     IplImage* cropImage(IplImage* image, CvRect* rect) {
 	IplImage * cropped  = cvCreateImage (cvSize(rect->width, rect->height), IPL_DEPTH_8U, 3);
@@ -178,8 +157,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	Detect faces in dp->_current_frame cropped to rect
 	Detect faces in whole image if rect == 0
      */
-  
-    CvSeq* detectFacesCrop(const DetectParams* dp, CvRect* rect)    {
+     CvSeq* detectFacesCrop(const DetectParams* dp, CvRect* rect)    {
 	CvSeq* faces = 0;
 	try { 
 	    if (rect) {
@@ -188,7 +166,6 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	    }
 	    // convert to gray and downsize
 	    cvCvtColor (dp->_current_frame, dp->_gray_image, CV_BGR2GRAY);
-	 
 	    cvResize (dp->_gray_image,dp->_small_image, CV_INTER_LINEAR);
 	    
 	    // detect faces
@@ -222,12 +199,10 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
  
     /*
-	Given a face rectangle, detect faces with different ROIs around that rectangle
-	mp gives search params
-        !@#$ refactor the multiple versions of this into a set of component functions
-     */
-    CroppedFrameList detectFacesMultiFrame(const DetectParams* dp, const MultiFrameParams* mp, CvRect faceIn) {	
-	// Rectangle that covers whole face;
+        Create a multi-frame list in a cross shape with x and y arms
+    */
+     CroppedFrameList createMultiFrameList_Cross(const MultiFrameParams* mp, CvRect faceIn) {
+        // Rectangle that covers whole face;
 	CvRect face = getPaddedFace(faceIn, mp->_outer_pad_width, mp->_outer_pad_height);
 	// Rectangle to search within
 	CvRect paddedFace = getPaddedFace(face, 1.0/(double)mp->_frac_width, 1.0/(double)mp->_frac_height);	
@@ -242,33 +217,36 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	int cx = (paddedFace.width-cropWidth)/2;
 	int cy = (paddedFace.height-cropHeight)/2;
 	
-	CvRect rect;
-	rect.width = cropWidth;
-	rect.height = cropHeight;
-	
 	CroppedFrameList croppedFrameList;	
 	croppedFrameList._face = face;
-	croppedFrameList._dx = dx;
-	croppedFrameList._dy = dy;
-	croppedFrameList._x.resize(mp->_num_inc_x);
-	croppedFrameList._y.resize(mp->_num_inc_y);
-	
-	for (int i = 0;i < mp->_num_inc_x; i++) {
+        croppedFrameList._frames.resize(mp->_num_inc_x + mp->_num_inc_y);
+	CvRect rect;
+        rect.width = cropWidth;
+	rect.height = cropHeight;
+	for (int i = 0; i < mp->_num_inc_x; i++) {
 	    rect.x = paddedFace.x + cvRound((double)i * dx);
 	    rect.y = cy;
-	    CvSeq* faces = detectFacesCrop(dp, &rect);
-	    croppedFrameList._x[i]._rect = rect;
-	    croppedFrameList._x[i]._faces = faces;
+	    croppedFrameList._frames[i]._rect = rect;
 	}
 	for (int i = 0; i < mp->_num_inc_y; i++) {
 	    rect.x = cx;
 	    rect.y = paddedFace.y + cvRound((double)i * dy);
-	    CvSeq* faces = detectFacesCrop(dp, &rect);
-	    croppedFrameList._y[i]._rect = rect;
-	    croppedFrameList._y[i]._faces = faces;
-	}
-	
+	    croppedFrameList._frames[mp->_num_inc_x+i]._rect = rect;
+        }
 	return croppedFrameList;
+    }
+     
+    /*
+	Detect faces within a set of frames (ROI rectangles)
+        croppedFrameList contains the frames at input and recieves the lists of faces for
+        each frame at output
+     */
+     void detectFacesMultiFrame(const DetectParams* dp, CroppedFrameList* croppedFrameList) {	
+        for (int i = 0; i < croppedFrameList->_frames.size(); i++) {
+	    CvRect rect =  croppedFrameList->_frames[i]._rect;
+	    CvSeq* faces = detectFacesCrop(dp, &rect);
+            croppedFrameList->_frames[i]._faces = faces;
+	}
     }
     
     
@@ -282,6 +260,9 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         return f1._face.width*f1._face.height > f2._face.width*f2._face.height;
     }
     
+    /*  
+        Detect faces in an image and a set of frames (ROI rects) within that image
+    */
     std::vector<CroppedFrameList> detectFaces2(const DetectParams* dp, const MultiFrameParams* mp, int maxFaces)    {
 	CvSeq* faces = detectFacesCrop(dp, 0);
 	std::vector<CroppedFrameList> faceList(faces ? faces->total : 0);
@@ -291,15 +272,11 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         std::sort(faceList.begin(), faceList.end(), SortFrameByArea);
         if (maxFaces >= 0 && faceList.size() > maxFaces) 
             faceList.resize(maxFaces);
+            
         for (int i = 0; i < faceList.size(); i++) {
 	    CvRect face = faceList[i]._face;
-            CroppedFrameList frameList;
-	    if (do_frames) {
-		frameList = detectFacesMultiFrame(dp, mp, face);
-	    }
-	    else {
-		frameList = makeFakeFrameList(mp, face);
-	    }
+            CroppedFrameList frameList = createMultiFrameList_Cross( mp, face);
+            detectFacesMultiFrame(dp, &frameList);
 	    faceList[i] = frameList;
 	}
 	return faceList;
