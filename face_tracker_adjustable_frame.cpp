@@ -132,17 +132,17 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	CvScalar offColor = CV_RGB(255,0,0);
 	CvScalar mainColor = CV_RGB(0,0,255);
 	CvScalar color;
-	int      diameter = (frameList->_face.width + frameList->_face.height)/2;	
+	int      diameter = max(5, (frameList->_face.width + frameList->_face.height)/50);	
 	
 	drawRect(wp, frameList->_face, mainColor);
-        drawMarker(wp, getCenter(frameList->_face), diameter, mainColor);
+       // drawMarker(wp, getCenter(frameList->_face), diameter, mainColor);
 	
 	for (int i = 0; i < frameList->_frames.size(); i++) {
             CvRect r = frameList->_frames[i]._rect;
 	    CvPoint c = getCenter(r);
             color = frameList->_frames[i].hasFaces() ? onColor : offColor;
             drawRect(wp, r, color);
-            drawMarker(wp, getCenter(r), diameter, color);  
+           // drawMarker(wp, getCenter(r), diameter, color);  
 	}
    }
     
@@ -241,7 +241,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     */
      CroppedFrameList createMultiFrameList_ConcentricImage(const DetectParams* dp) {
         double innerFrameFrac = 0.9;
-        int    numFrames = 20;
+        int    numFrames = 40;
         CroppedFrameList croppedFrameList;
         croppedFrameList._frames.resize(numFrames);
         int imageWidth  = dp->_small_image->width; //dp->_current_frame->width;
@@ -255,6 +255,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             croppedFrameList._frames[i]._rect = rect;
             cout << "rect[" << i << "] = " << rect.x << ", " << rect.y << ", " << rect.width << ", " << rect.height << endl;
         }
+        croppedFrameList._face = croppedFrameList._frames[0]._rect;
         return croppedFrameList;
      }
      
@@ -402,7 +403,7 @@ int main (int argc, char * const argv[])
 	const char* brad1 = "brad-profile-1.jpg";
 	const char* brad2 = "brad-profile-2.jpg";
         const char* john1 = "john_in_bed.jpg";
-	const char* fn = brad1;
+	const char* fn = brad2;
 	dp._current_frame = cvLoadImage(fn);
 	if (!dp._current_frame) {
 	    cerr << "Could not find " << fn << endl;
