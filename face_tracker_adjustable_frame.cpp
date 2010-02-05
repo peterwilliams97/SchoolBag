@@ -26,11 +26,11 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     double haar_face_pad_height = 1.6;
     /*
 	Frames are rectangles that contain faces
-	Outer frame is face rect returned from cvHaar scaled up by _outer_pad_width x _outer_pad_height
-	Inner frame is outer frame scaled down by _frac_width x _frac_height
+	Outer rect is face rect returned from cvHaar scaled up by _outer_pad_width x _outer_pad_height
+	Inner rect is outer rect scaled down by _frac_width x _frac_height
 	Number of inner frames checked is based on _num_inc_x and _num_inc_y
      
-	!@#$ Need to make inner frame big enough to detect face in
+	!@#$ Need to make inner rect big enough to detect face in
 
      */
     struct MultiFrameParams {
@@ -56,7 +56,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     
     bool doing_fake_crops = false;
     /*
-        A cropped frame and list of faces detected in that frame
+        A cropped rect and list of faces detected in that rect
     */
     struct CroppedFrame {
 	CvRect _rect;
@@ -128,7 +128,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
     
     void drawCropFrames(const DrawParams* wp, const MultiFrameParams* mp, const CroppedFrameList* frameList) {
-	CvScalar onColor  = CV_RGB(255,255,0);
+	CvScalar onColor  = CV_RGB(255,255,255);
 	CvScalar offColor = CV_RGB(255,0,0);
 	CvScalar mainColor = CV_RGB(0,0,255);
 	CvScalar color;
@@ -199,7 +199,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
  
     /*
-        Create a multi-frame list in a cross shape with x and y arms
+        Create a multi-rect list in a cross shape with x and y arms
     */
      CroppedFrameList createMultiFrameList_Cross(const MultiFrameParams* mp, CvRect faceIn) {
         // Rectangle that covers whole face;
@@ -235,11 +235,33 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         }
 	return croppedFrameList;
     }
+    
+    /*
+        Create a multi-rect list concentric from image rect
+    */
+     CroppedFrameList createMultiFrameList_ConcentricImage(const DetectParams* dp) {
+        double innerFrameFrac = 0.9;
+        int    numFrames = 20;
+        CroppedFrameList croppedFrameList;
+        croppedFrameList._frames.resize(numFrames);
+        int imageWidth  = dp->_small_image->width; //dp->_current_frame->width;
+        int imageHeight = dp->_small_image->height;//dp->_current_frame->height;
+        CvRect rect;
+        for (int i = 0; i < numFrames; i++) { 
+            rect.x = cvRound((1.0 - innerFrameFrac)*imageWidth *(double)i/(double)(numFrames - 1));
+            rect.y = cvRound((1.0 - innerFrameFrac)*imageHeight*(double)i/(double)(numFrames - 1));
+            rect.width  = imageWidth  - 2 * rect.x;
+            rect.height = imageHeight - 2 * rect.y;
+            croppedFrameList._frames[i]._rect = rect;
+            cout << "rect[" << i << "] = " << rect.x << ", " << rect.y << ", " << rect.width << ", " << rect.height << endl;
+        }
+        return croppedFrameList;
+     }
      
     /*
 	Detect faces within a set of frames (ROI rectangles)
         croppedFrameList contains the frames at input and recieves the lists of faces for
-        each frame at output
+        each rect at output
      */
      void detectFacesMultiFrame(const DetectParams* dp, CroppedFrameList* croppedFrameList) {	
         for (int i = 0; i < croppedFrameList->_frames.size(); i++) {
@@ -275,7 +297,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             
         for (int i = 0; i < faceList.size(); i++) {
 	    CvRect face = faceList[i]._face;
-            CroppedFrameList frameList = createMultiFrameList_Cross( mp, face);
+            //CroppedFrameList frameList = createMultiFrameList_Cross(mp, face);
+            CroppedFrameList frameList = createMultiFrameList_ConcentricImage(dp);
             detectFacesMultiFrame(dp, &frameList);
 	    faceList[i] = frameList;
 	}
@@ -387,7 +410,7 @@ int main (int argc, char * const argv[])
 	}
     }
     else {
-	// get an initial frame and duplicate it for later work
+	// get an initial rect and duplicate it for later work
 	dp._current_frame = cvQueryFrame (camera);
     }
     dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
