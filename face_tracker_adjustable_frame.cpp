@@ -2,25 +2,32 @@
 #include <OpenCV/OpenCV.h>
 #include <cassert>
 #include <iostream>
+#include <iomanip>
 
 using namespace std;
 
 namespace  {
     
-const char  * WINDOW_NAME  = "Face Tracker";
+const char  * WINDOW_NAME  = "Face Tracker with Sub-Frames";
 const CFIndex CASCADE_NAME_LEN = 2048;
       char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
  
-    struct DetectParams {
-	IplImage* _current_frame; 
-	IplImage* _gray_image; 
-	IplImage* _small_image;
+    /* 
+     *  All the members of DetectorState are needed for a cvHaarDetectObjects() call
+     */
+    struct DetectorState {
+	IplImage*       _current_frame; 
+	IplImage*       _gray_image; 
+	IplImage*       _small_image;
 	CvHaarClassifierCascade* _cascade;  
-	CvMemStorage* _storage;
+	CvMemStorage*   _storage;
+      // Params  
+        double          _scale_factor;  // =1.1, 
+        int             _min_neighbors; // =3, 
     };
     
     /*
-     Rectangles returned by CvHaar need to be expanded by this amount for face to be detected in the expanded rectangle
+     * Rectangles returned by CvHaar need to be expanded by this amount for face to be detected in the expanded rectangle
      */
     double haar_face_pad_width = 1.4;
     double haar_face_pad_height = 1.6;
@@ -54,6 +61,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	int	  _small_image_width;
     };
     
+    CvRect EMPTY_RECT = { 0, 0, 0, 0 };
     bool doing_fake_crops = false;
     /*
         A cropped rect and list of faces detected in that rect
@@ -62,6 +70,11 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	CvRect _rect;
 	CvSeq* _faces;
 	bool   _fakeFaces;
+        
+        CroppedFrame() {
+            _faces = 0;
+            _rect  = EMPTY_RECT;
+        }
 	
 	bool hasFaces() const {
 	    if (doing_fake_crops)
@@ -79,6 +92,13 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     struct CroppedFrameList {
 	CvRect _face;		// main face
 	std::vector<CroppedFrame> _frames;
+        int  numWithFaces() {
+            int n = 0;
+            for (int i = 0; i < _frames.size(); i++) {
+                n += _frames[i].hasFaces() ? 1 : 0;
+            }
+            return n;
+        }
     };
     
       
@@ -157,7 +177,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	Detect faces in dp->_current_frame cropped to rect
 	Detect faces in whole image if rect == 0
      */
-     CvSeq* detectFacesCrop(const DetectParams* dp, CvRect* rect)    {
+     CvSeq* detectFacesCrop(const DetectorState* dp, CvRect* rect)    {
 	CvSeq* faces = 0;
 	try { 
 	    if (rect) {
@@ -170,7 +190,9 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	    
 	    // detect faces
 	    faces = cvHaarDetectObjects (dp->_small_image, dp->_cascade, dp->_storage,
-						    1.1, 2, CV_HAAR_DO_CANNY_PRUNING,
+                                        dp->_scale_factor, dp->_min_neighbors, 
+                                        //    1.1, 2, 
+                                                    CV_HAAR_DO_CANNY_PRUNING,
 						cvSize (30, 30));
 	    if (rect) {
 		cvResetImageROI(dp->_current_frame);
@@ -239,7 +261,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     /*
         Create a multi-rect list concentric from image rect
     */
-     CroppedFrameList createMultiFrameList_ConcentricImage(const DetectParams* dp) {
+     CroppedFrameList createMultiFrameList_ConcentricImage(const DetectorState* dp) {
         double innerFrameFrac = 0.9;
         int    numFrames = 40;
         CroppedFrameList croppedFrameList;
@@ -253,7 +275,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             rect.width  = imageWidth  - 2 * rect.x;
             rect.height = imageHeight - 2 * rect.y;
             croppedFrameList._frames[i]._rect = rect;
-            cout << "rect[" << i << "] = " << rect.x << ", " << rect.y << ", " << rect.width << ", " << rect.height << endl;
+      //      cout << "rect[" << i << "] = " << rect.x << ", " << rect.y << ", " << rect.width << ", " << rect.height << endl;
         }
         croppedFrameList._face = croppedFrameList._frames[0]._rect;
         return croppedFrameList;
@@ -264,16 +286,17 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         croppedFrameList contains the frames at input and recieves the lists of faces for
         each rect at output
      */
-     void detectFacesMultiFrame(const DetectParams* dp, CroppedFrameList* croppedFrameList) {	
+     void detectFacesMultiFrame(const DetectorState* dp, CroppedFrameList* croppedFrameList) {	
         for (int i = 0; i < croppedFrameList->_frames.size(); i++) {
 	    CvRect rect =  croppedFrameList->_frames[i]._rect;
 	    CvSeq* faces = detectFacesCrop(dp, &rect);
             croppedFrameList->_frames[i]._faces = faces;
+    //        cout << "Test " << i << ": " <<   croppedFrameList->_frames[i].hasFaces();
 	}
     }
     
     
-    CvSeq* detectFaces(DetectParams* dp)    {
+    CvSeq* detectFaces(DetectorState* dp)    {
 	return detectFacesCrop(dp, 0);
     }
     
@@ -286,7 +309,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     /*  
         Detect faces in an image and a set of frames (ROI rects) within that image
     */
-    std::vector<CroppedFrameList> detectFaces2(const DetectParams* dp, const MultiFrameParams* mp, int maxFaces)    {
+    std::vector<CroppedFrameList> detectFaces2(const DetectorState* dp, const MultiFrameParams* mp, int maxFaces)    {
 	CvSeq* faces = detectFacesCrop(dp, 0);
 	std::vector<CroppedFrameList> faceList(faces ? faces->total : 0);
 	for (int i = 0; i < faceList.size(); i++) {
@@ -306,7 +329,9 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	return faceList;
     }
     
-    void processOneImage(DetectParams& dp,
+       
+    std::vector<CroppedFrameList>  
+        processOneImage2(DetectorState& dp,
 			 MultiFrameParams& mp,
 			 DrawParams& wp) {
 #if 0
@@ -324,6 +349,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             radius = cvRound((r->width + r->height)*0.25*scale);
             cvCircle (draw_image, center, radius, CV_RGB(0,255,0), 3, 8, 0 );
 	}
+        // just show the image
+	cvShowImage (WINDOW_NAME, wp._draw_image); 
 #else
 	std::vector<CroppedFrameList> faceList = detectFaces2(&dp, &mp, 1);  
 	
@@ -346,99 +373,147 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	    p2.y = cvRound((double)(r->y + r->height)*wp._scale);
 	    cvRectangle(wp._draw_image, p1, p2, CV_RGB(0,0,255), (i==0 ? 3:1));
 	    drawCropFrames(&wp, &mp, &faceList[i]) ;
-	}
+          
+  	}	
+          cvShowImage (WINDOW_NAME, wp._draw_image); 
+        return faceList;
+        // just show the image
+	
 #endif
-	// just show the image
-	cvShowImage (WINDOW_NAME, wp._draw_image);    	
+   	
     }
+    
+    
+    
+    void processOneImage(DetectorState& dp,
+			 MultiFrameParams& mp,
+			 DrawParams& wp) {
+        double scale_factor = 1.1;
+        int    min_neighbors = 2;
+        dp._scale_factor = scale_factor;
+        dp._min_neighbors = min_neighbors;
+        std::vector<CroppedFrameList> faceList = processOneImage2(dp, mp, wp);
+        int i = 0;
+        for (min_neighbors = 2; min_neighbors <= 4; min_neighbors++) {
+            for (scale_factor = 1.05; scale_factor <= 1.5; scale_factor += .025) {
+            //  cout << "******************* Run " << i+1 << " ******************" << endl;
+                dp._scale_factor = scale_factor;
+                dp._min_neighbors = min_neighbors;
+                faceList = processOneImage2(dp, mp, wp);
+                if (faceList.size() > 0) {
+                    CroppedFrameList frameList = faceList[0];
+               //     cout << "Num frames = " << setw(4)  << frameList._frames.size() << endl;
+                    cout << " " << setw(4) << i 
+                        << setw(5) << setprecision(3) << scale_factor 
+                        << setw(4) << min_neighbors
+                        << setw(4) << frameList.numWithFaces()
+                        << setw(4)  << frameList._frames.size()
+                        << endl;
+                }
+            //   cout << "$$$$$$$$$$$$$$$$$$$ Run " << i+1 << " $$$$$$$$$$$$$$$$$$" << endl;
+                ++i;
+            }
+        }
+     }
+
+
+    void main_stuff () 
+    {
+        
+        char cwd[200];
+        getcwd(cwd, 200);
+        cout << "cwd is " << cwd << endl;
+        
+        const int scale = 2;
+        bool do_file = true;
+        
+        // locate haar cascade from inside application bundle
+        // (this is the mac way to package application resources)
+        CFBundleRef mainBundle  = CFBundleGetMainBundle ();
+        assert (mainBundle);
+        CFURLRef    cascade_url = CFBundleCopyResourceURL (mainBundle, CFSTR("haarcascade_frontalface_alt2"), CFSTR("xml"), NULL);
+        assert (cascade_url);
+        Boolean     got_it      = CFURLGetFileSystemRepresentation (cascade_url, true, 
+                                                                    reinterpret_cast<UInt8 *>(CASCADE_NAME), CASCADE_NAME_LEN);
+        if (! got_it)
+            abort ();
+        
+        DetectorState dp;
+        MultiFrameParams mp;
+        DrawParams wp;
+        
+        // create all necessary instances
+        cvNamedWindow (WINDOW_NAME, CV_WINDOW_AUTOSIZE);
+        CvCapture * camera = 0;
+        if (!do_file) {
+            camera = cvCreateCameraCapture (CV_CAP_ANY);
+            // you do own an iSight, don't you ?!?
+            if (!camera)
+                abort ();
+        }
+        dp._cascade = (CvHaarClassifierCascade*) cvLoad (CASCADE_NAME, 0, 0, 0);
+        dp._storage = cvCreateMemStorage(0);
+        assert (dp._storage);
+
+       
+        // did we load the cascade?!?
+        if (!dp._cascade)
+            abort ();
+
+        if (do_file) {
+            const char* brad1 = "brad-profile-1.jpg";
+            const char* brad2 = "brad-profile-2.jpg";
+            const char* john1 = "john_in_bed.jpg";
+            const char* fn = brad2;
+            dp._current_frame = cvLoadImage(fn);
+            if (!dp._current_frame) {
+                cerr << "Could not find " << fn << endl;
+                abort();
+            }
+        }
+        else {
+            // get an initial rect and duplicate it for later work
+            dp._current_frame = cvQueryFrame (camera);
+        }
+        dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
+        dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
+        wp._draw_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 3);
+        assert (dp._current_frame && dp._gray_image && wp._draw_image);
+        
+        wp._scale = scale;
+        wp._small_image_width = dp._small_image->width;
+        
+        if (do_file) {
+             processOneImage(dp, mp, wp) ;
+            // wait a tenth of a second for keypress and window drawing
+            cvWaitKey (-1);
+        }
+        else {
+            // as long as there are images ...
+            while (dp._current_frame = cvQueryFrame (camera))
+            {     
+                processOneImage(dp, mp, wp) ;
+                // wait a tenth of a second for keypress and window drawing
+                int key = cvWaitKey (100);
+                if (key == 'q' || key == 'Q')
+                    break;
+            }
+        }
+
+        cvReleaseImage(&dp._current_frame); 
+        cvReleaseImage(&dp._gray_image);
+        cvReleaseImage(&dp._small_image);
+        cvReleaseImage(&wp._draw_image);
+        cvReleaseMemStorage(&dp._storage);
+        cvFree(&dp._cascade);
+    }
+
 }
 
-
-
-
-int main (int argc, char * const argv[]) 
-{
-    
-    char cwd[200];
-    getcwd(cwd, 200);
-    cout << "cwd is " << cwd << endl;
-    
-    const int scale = 2;
-    bool do_file = true;
-    
-    // locate haar cascade from inside application bundle
-    // (this is the mac way to package application resources)
-    CFBundleRef mainBundle  = CFBundleGetMainBundle ();
-    assert (mainBundle);
-    CFURLRef    cascade_url = CFBundleCopyResourceURL (mainBundle, CFSTR("haarcascade_frontalface_alt2"), CFSTR("xml"), NULL);
-    assert (cascade_url);
-    Boolean     got_it      = CFURLGetFileSystemRepresentation (cascade_url, true, 
-                                                                reinterpret_cast<UInt8 *>(CASCADE_NAME), CASCADE_NAME_LEN);
-    if (! got_it)
-        abort ();
-    
-    DetectParams dp;
-    MultiFrameParams mp;
-    DrawParams wp;
-    
-    // create all necessary instances
-    cvNamedWindow (WINDOW_NAME, CV_WINDOW_AUTOSIZE);
-    CvCapture * camera = 0;
-    if (!do_file) {
-	camera = cvCreateCameraCapture (CV_CAP_ANY);
-	// you do own an iSight, don't you ?!?
-	if (!camera)
-	    abort ();
-    }
-    dp._cascade = (CvHaarClassifierCascade*) cvLoad (CASCADE_NAME, 0, 0, 0);
-    dp._storage = cvCreateMemStorage(0);
-    assert (dp._storage);
-
-   
-    // did we load the cascade?!?
-    if (!dp._cascade)
-        abort ();
-
-    if (do_file) {
-	const char* brad1 = "brad-profile-1.jpg";
-	const char* brad2 = "brad-profile-2.jpg";
-        const char* john1 = "john_in_bed.jpg";
-	const char* fn = brad2;
-	dp._current_frame = cvLoadImage(fn);
-	if (!dp._current_frame) {
-	    cerr << "Could not find " << fn << endl;
-	    abort();
-	}
-    }
-    else {
-	// get an initial rect and duplicate it for later work
-	dp._current_frame = cvQueryFrame (camera);
-    }
-    dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
-    dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
-    wp._draw_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 3);
-    assert (dp._current_frame && dp._gray_image && wp._draw_image);
-    
-    wp._scale = scale;
-    wp._small_image_width = dp._small_image->width;
-    
-    if (do_file) {
-	processOneImage(dp, mp, wp) ;
-	// wait a tenth of a second for keypress and window drawing
-	cvWaitKey (-1);
-    }
-    else {
-	// as long as there are images ...
-	while (dp._current_frame = cvQueryFrame (camera))
-	{     
-	    processOneImage(dp, mp, wp) ;
-	    // wait a tenth of a second for keypress and window drawing
-	    int key = cvWaitKey (100);
-	    if (key == 'q' || key == 'Q')
-		break;
-	}
-    }
-    
-    // be nice and return no error
+int main (int argc, char * const argv[]) {
+    main_stuff();
     return 0;
 }
+
+
+
