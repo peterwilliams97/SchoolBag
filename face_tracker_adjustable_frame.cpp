@@ -603,10 +603,10 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 
 int main (int argc, char * const argv[]) {
     vector<FaceDetectResult> results, all_results;
-    for (int i = 0; i < 5; i++) {
+  // for (int i = 0; i < 5; i++) {
         results = main_stuff();
        // all_results += results;
-    }
+ //   }
     return 0;
 }
 
