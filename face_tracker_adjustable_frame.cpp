@@ -589,6 +589,10 @@ int main (int argc, char * const argv[]) {
     pr._image_names.push_back("brad-profile-1.jpg");
     pr._image_names.push_back("brad-profile-2.jpg");
     pr._image_names.push_back("john_in_bed.jpg");
+    pr._image_names.push_back("madeline_smiling.jpg");
+    pr._image_names.push_back("madeline_shades.jpg");
+    pr._image_names.push_back("madeline_silly.jpg");
+
 
     //pr._cascades;
     vector<FaceDetectResult> results, all_results;
