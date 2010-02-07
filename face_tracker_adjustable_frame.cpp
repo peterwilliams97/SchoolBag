@@ -152,7 +152,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	CvScalar offColor = CV_RGB(255,0,0);
 	CvScalar mainColor = CV_RGB(0,0,255);
 	CvScalar color;
-	int      diameter = max(5, (frameList->_face.width + frameList->_face.height)/50);	
+//	int      diameter = max(5, (frameList->_face.width + frameList->_face.height)/50);	
 	
 	drawRect(wp, frameList->_face, mainColor);
        // drawMarker(wp, getCenter(frameList->_face), diameter, mainColor);
@@ -311,9 +311,10 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
     
     /*  
-        Detect faces in an image and a set of frames (ROI rects) within that image
-    */
-    std::vector<CroppedFrameList> detectFaces2(const DetectorState* dp, const MultiFrameParams* mp, int maxFaces)    {
+     *   Detect faces in an image and a set of frames (ROI rects) within that image
+     */
+    std::vector<CroppedFrameList> detectFaces2(const DetectorState* dp,  int maxFaces)    {
+        MultiFrameParams mp;
 	CvSeq* faces = detectFacesCrop(dp, 0);
 	std::vector<CroppedFrameList> faceList(faces ? faces->total : 0);
 	for (int i = 0; i < faceList.size(); i++) {
@@ -335,57 +336,16 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     
        
     std::vector<CroppedFrameList>  
-        processOneImage2(DetectorState& dp,
-			 MultiFrameParams& mp,
-			 DrawParams& wp) {
-#if 0
-        CvSeq* faces = detectFaces(&dp);
-	
-        // draw faces
-        cvFlip (dp._current_frame, draw_image, 1);
-        for (int i = 0; i < (faces ? faces->total : 0); i++)
-        {
-            CvRect* r = (CvRect*) cvGetSeqElem (faces, i);
-            CvPoint center;
-            int radius;
-            center.x = cvRound((dp._small_image->width - r->width*0.5 - r->x) *scale);
-            center.y = cvRound((r->y + r->height*0.5)*scale);
-            radius = cvRound((r->width + r->height)*0.25*scale);
-            cvCircle (draw_image, center, radius, CV_RGB(0,255,0), 3, 8, 0 );
-	}
-        // just show the image
-	cvShowImage (WINDOW_NAME, wp._draw_image); 
-#else
-	std::vector<CroppedFrameList> faceList = detectFaces2(&dp, &mp, 1);  
+        processOneImage2(const DetectorState& dp,
+			 const DrawParams& wp) {
+
+	std::vector<CroppedFrameList> faceList = detectFaces2(&dp, 1);  
 	
 	// draw faces
 	cvFlip (dp._current_frame, wp._draw_image, 1);
-        /*
-	for (int i = 0; i < faceList.size(); i++)
-	{
-	    CvRect* r = &(faceList[i]._face);;
-	    CvPoint center;
-	    int radius;
-	    center.x = cvRound((dp._small_image->width - r->width*0.5 - r->x) * wp._scale);
-	    center.y = cvRound((r->y + r->height*0.5) * wp._scale);
-	    radius = cvRound((r->width + r->height)*0.25* wp._scale);
-	    //cvCircle (draw_image, center, radius, CV_RGB(0,255,0), 3, 8, 0 );
-	    
-	   CvPoint p1, p2;
-	    p1.x = cvRound((double)(dp._small_image->width - r->x) * wp._scale);
-	    p1.y = cvRound((double)(r->y) * wp._scale);
-	    p2.x = cvRound((double)(dp._small_image->width - (r->x + r->width)) * wp._scale);
-	    p2.y = cvRound((double)(r->y + r->height)*wp._scale);
-	    cvRectangle(wp._draw_image, p1, p2, CV_RGB(0,0,255), (i==0 ? 3:1));
-            drawCropFrames(&wp, &mp, &faceList[i]) ;
-        }	
-        */
         cvShowImage (WINDOW_NAME, wp._draw_image); 
+        
         return faceList;
-        // just show the image
-	
-#endif
-   	
     }
     
     struct FaceDetectResult {
@@ -444,31 +404,54 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             results[i]._ordinal = ordinal;
         }
     }
+    
+    void showResults(vector<FaceDetectResult> results) {
+        for (vector<FaceDetectResult>::const_iterator it = results.begin(); it != results.end(); it++)
+            resultsSortFunc(*it, *it);
+        cout << "======================== showResults =================================" << endl;
+
+        cout << " sort(results.begin(), results.end(), resultsSortFunc" << endl;
+        sort(results.begin(), results.end(), resultsSortFunc);
+        for (int i = 0; i < results.size(); i++) {
+            FaceDetectResult& r = results[i];
+           cout << " " << setw(4) << i 
+                << setw(4) << r._num_frames_total
+                << setw(4) << r._num_frames_faces
+                << setw(5) << setprecision(3) << r._scale_factor 
+                << setw(4) << r._min_neighbors
+                << "   "   << r._image_name
+                 << endl;
+        }
+    }
+    
+    struct  ParamRanges {
+        int    _min_neighbors_min, _min_neighbors_max, _min_neighbors_delta;
+        double _scale_factor_min,  _scale_factor_max,  _scale_factor_delta;
+        vector<string> _image_names;
+        vector<string> _cascades;
+   };
      
-     vector<FaceDetectResult>  processOneImage(DetectorState& dp,
-			 MultiFrameParams& mp,
-			 DrawParams& wp) {
+    vector<FaceDetectResult>  
+        processOneImage(      DetectorState& dp,
+                        const DrawParams& wp,
+                        const ParamRanges& pr) {
         double scale_factor = 1.1;
         int    min_neighbors = 2;
         dp._scale_factor = scale_factor;
         dp._min_neighbors = min_neighbors;
-        vector<CroppedFrameList> faceList = processOneImage2(dp, mp, wp);
+        vector<CroppedFrameList> faceList = processOneImage2(dp, wp);
         vector<FaceDetectResult> results;
         int i = 0;
     //   for (min_neighbors = 2; min_neighbors <= 7; min_neighbors++) {
    //         for (scale_factor = 1.01; scale_factor <= 1.5; scale_factor += .005) {
-       for (min_neighbors = 2; min_neighbors <= 3; min_neighbors++) {
-            for (scale_factor = 1.01; scale_factor <= 1.5; scale_factor += .1) {
+       for (min_neighbors = pr._min_neighbors_min; min_neighbors <= pr._min_neighbors_max; min_neighbors += pr._min_neighbors_delta) {
+            for (scale_factor = pr._scale_factor_min; scale_factor <= pr._scale_factor_max; scale_factor += pr._scale_factor_delta) {
             //  cout << "******************* Run " << i+1 << " ******************" << endl;
                 dp._scale_factor = scale_factor;
                 dp._min_neighbors = min_neighbors;
-                faceList = processOneImage2(dp, mp, wp);
-              //  FaceDetectResult r(45,  25, scale_factor, min_neighbors, dp._image_name);
-             //   results.push_back(r);
-
+                faceList = processOneImage2(dp, wp);
                 if (faceList.size() > 0) {
                     CroppedFrameList frameList = faceList[0];
-                   
                     FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), scale_factor, min_neighbors, dp._image_name);
                     results.push_back(r);
                //     cout << "Num frames = " << setw(4)  << frameList._frames.size() << endl;
@@ -486,6 +469,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         
         cout << "=========================================================" << endl;
         computeResultOrder(results);
+        
+        /*
         for (vector<FaceDetectResult>::const_iterator it = results.begin(); it != results.end(); it++)
             resultsSortFunc(*it, *it);
         cout << "=========================================================" << endl;
@@ -502,19 +487,50 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             //    << "   "   << r._image_name
                  << endl;
         }
+        */
+        showResults(results);
         return results;
-     }
-
-
-    vector<FaceDetectResult>  main_stuff ()     {
-        
-        char cwd[200];
-        getcwd(cwd, 200);
-        cout << "cwd is " << cwd << endl;
-        
+    }
+    
+     vector<FaceDetectResult> 
+        detectInOneImage(DetectorState& dp,
+                   const ParamRanges& pr,
+                   const string imageName) {
         const int scale = 2;
-        bool do_file = true;
+         
+        DrawParams wp;
+      
+        dp._image_name = imageName;
+        dp._current_frame = cvLoadImage(imageName.c_str());
+        if (!dp._current_frame) {
+            cerr << "Could not find " << imageName << endl;
+            abort();
+        }
+        dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
+        dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
+        wp._draw_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 3);
+        assert (dp._current_frame && dp._gray_image && wp._draw_image);
         
+        wp._scale = scale;
+        wp._small_image_width = dp._small_image->width;
+        
+        
+        vector<FaceDetectResult>  results = processOneImage(dp, wp, pr) ;
+            // wait a tenth of a second for keypress and window drawing
+        cvWaitKey (10);
+       
+
+        cvReleaseImage(&dp._current_frame); 
+        cvReleaseImage(&dp._gray_image);
+        cvReleaseImage(&dp._small_image);
+        cvReleaseImage(&wp._draw_image);
+        
+        return results;
+    }
+
+
+    vector<FaceDetectResult>  main_stuff (const ParamRanges& pr)     {
+       
         // locate haar cascade from inside application bundle
         // (this is the mac way to package application resources)
         CFBundleRef mainBundle  = CFBundleGetMainBundle ();
@@ -527,86 +543,61 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             abort ();
         
         DetectorState dp;
-        MultiFrameParams mp;
-        DrawParams wp;
-         vector<FaceDetectResult>  results;
+       
         // create all necessary instances
         cvNamedWindow (WINDOW_NAME, CV_WINDOW_AUTOSIZE);
-        CvCapture * camera = 0;
-        if (!do_file) {
-            camera = cvCreateCameraCapture (CV_CAP_ANY);
-            // you do own an iSight, don't you ?!?
-            if (!camera)
-                abort ();
-        }
         dp._cascade = (CvHaarClassifierCascade*) cvLoad (CASCADE_NAME, 0, 0, 0);
         dp._storage = cvCreateMemStorage(0);
         assert (dp._storage);
-
-       
+        
         // did we load the cascade?!?
         if (!dp._cascade)
             abort ();
-
-        if (do_file) {
-            const char* brad1 = "brad-profile-1.jpg";
-            const char* brad2 = "brad-profile-2.jpg";
-            const char* john1 = "john_in_bed.jpg";
-            const char* fn = brad2;
-            dp._image_name = fn;
-            dp._current_frame = cvLoadImage(fn);
-            if (!dp._current_frame) {
-                cerr << "Could not find " << fn << endl;
-                abort();
-            }
+ 
+  
+        vector<FaceDetectResult>  all_results;
+        for (vector<string>::const_iterator it = pr._image_names.begin(); it != pr._image_names.end(); it++) {
+            vector<FaceDetectResult>  results = detectInOneImage(dp, pr, *it) ;   
+            all_results.insert(all_results.end(), results.begin(), results.end());
         }
-        else {
-            // get an initial rect and duplicate it for later work
-            dp._current_frame = cvQueryFrame (camera);
-        }
-        dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
-        dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
-        wp._draw_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 3);
-        assert (dp._current_frame && dp._gray_image && wp._draw_image);
         
-        wp._scale = scale;
-        wp._small_image_width = dp._small_image->width;
-        
-        if (do_file) {
-             results = processOneImage(dp, mp, wp) ;
-            // wait a tenth of a second for keypress and window drawing
-            cvWaitKey (10);
-        }
-        else {
-            // as long as there are images ...
-            while (dp._current_frame = cvQueryFrame (camera))
-            {     
-                results = processOneImage(dp, mp, wp) ;
-                // wait a tenth of a second for keypress and window drawing
-                int key = cvWaitKey (100);
-                if (key == 'q' || key == 'Q')
-                    break;
-            }
-        }
-
-        cvReleaseImage(&dp._current_frame); 
-        cvReleaseImage(&dp._gray_image);
-        cvReleaseImage(&dp._small_image);
-        cvReleaseImage(&wp._draw_image);
         cvReleaseMemStorage(&dp._storage);
         cvFree(&dp._cascade);
         
-        return results;
+        return all_results;
+    }
+    
+    void startup() {
+        char cwd[200];
+        getcwd(cwd, 200);
+        cout << "cwd is " << cwd << endl;
     }
 
 }
 
+
 int main (int argc, char * const argv[]) {
+    startup();
+    
+    ParamRanges pr;
+    pr._min_neighbors_min = 1;
+    pr._min_neighbors_max = 2;
+    pr._min_neighbors_delta = 1;
+    pr._scale_factor_min = 1.01;
+    pr._scale_factor_max = 1.2;
+    pr._scale_factor_delta = 0.1;
+    pr._image_names.push_back("brad-profile-1.jpg");
+    pr._image_names.push_back("brad-profile-2.jpg");
+    pr._image_names.push_back("john_in_bed.jpg");
+
+    //pr._cascades;
     vector<FaceDetectResult> results, all_results;
-  // for (int i = 0; i < 5; i++) {
-        results = main_stuff();
-       // all_results += results;
- //   }
+   // for (vector<FaceDetectResult>::const_iterator it = results.begin(); it != results.end(); it++) {
+        results = main_stuff(pr);
+        all_results.insert(all_results.end(), results.begin(), results.end());
+  //  }
+    cout << "---------------- all_results --------------" << endl;
+    showResults(all_results);
     return 0;
 }
 
