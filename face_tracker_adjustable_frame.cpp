@@ -432,7 +432,9 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         int d = 0;
         if (d==0)
             d = r2._ordinal - r1._ordinal;
-        if (d==0)
+         if (d==0)
+            d = r2._num_false_positives - r1._num_false_positives;
+       if (d==0)
             d = r1._num_frames_faces - r2._num_frames_faces;
         if (d==0)
             d = r1._image_name.compare(r2._image_name);
@@ -473,7 +475,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             << setw(5) << setprecision(3) << r._scale_factor 
             << setw(4) << r._min_neighbors
             << " "   << setw(20) << r._image_name
-            << " "   << setw(31) << r._cascade_name
+            << " "   << setw(32) << r._cascade_name
            
              << endl;
     }
@@ -681,7 +683,7 @@ int main (int argc, char * const argv[]) {
     pr._scale_factor_min = 1.05;
     pr._scale_factor_max = 1.3;
     pr._scale_factor_delta = 0.05;
-    pr._cascades.push_back("haarcascade_frontalface_alt2");
+    pr._cascades.push_back("haarcascade_frontalface_alt");
     pr._cascades.push_back("haarcascade_frontalface_alt2");
     pr._cascades.push_back("haarcascade_frontalface_alt_tree");
     pr._cascades.push_back("haarcascade_frontalface_default");
