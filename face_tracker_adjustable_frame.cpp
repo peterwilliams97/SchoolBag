@@ -391,7 +391,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         if (d==0)
             d = r2._ordinal - r1._ordinal;
         if (d==0)
-            d = r2._num_frames_faces - r1._num_frames_faces;
+            d = r1._num_frames_faces - r2._num_frames_faces;
         if (d==0)
             d = r1._image_name.compare(r2._image_name);
         if (d==0)
@@ -420,10 +420,28 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             (*it)._ordinal = ordinal;
         }
     }
-    
+    void  showOneResult(const FaceDetectResult& r) { 
+        cout << setw(4) << r._num_frames_total
+            << setw(4) << r._num_frames_faces
+            << setw(4) << r._ordinal
+
+            << setw(5) << setprecision(3) << r._scale_factor 
+            << setw(4) << r._min_neighbors
+            << " "   << setw(20) << r._image_name
+            << " "   << setw(20) << r._cascade_name
+             << endl;
+    }
+    void showResultsRange(vector<FaceDetectResult>& results,
+                            vector<FaceDetectResult>::iterator it0,
+                            vector<FaceDetectResult>::iterator it1) {
+        vector<FaceDetectResult>::iterator it;
+        for (it = it0; it != it1; it++) {
+            showOneResult(*it);
+        }
+    }
+                            
+
     void showResults(vector<FaceDetectResult> results) {
-     //   for (vector<FaceDetectResult>::const_iterator it = results.begin(); it != results.end(); it++)
-    //      resultsSortFunc(*it, *it);
         cout << "======================== showResults " << results.size() << " =================================" << endl;
         if (results.size() > 0 ) {
 
@@ -431,34 +449,23 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             sort(results.begin(), results.end(), resultsSortFuncImageName);
             vector<FaceDetectResult>::iterator it, it0 = results.begin();
         
-            int   names_left = 0;
-            for (it = results.begin(); it != results.end(); it++) {
-                ++names_left;
+              for (it = results.begin(); it != results.end(); it++) {
                 if ((*it)._image_name.compare((*it0)._image_name) != 0) {
                     computeResultOrder(results, it0, it);
+                    cout << "++++++" << (*it0)._image_name << endl;
+                    showResultsRange(results, it0, it);
                     it0 = it;
-                    names_left = 0;
-                }
+                    cout << "++++++"  << endl;
+              }
             }
-            if (names_left > 0) // !@#$ it != it0
+            if (it != it0) {
                 computeResultOrder(results, it0, it);
-
+                showResultsRange(results, it0, it);
+            }
             cout << " sort(results.begin(), results.end(), resultsSortFunc" << endl;
             sort(results.begin(), results.end(), resultsSortFunc);
-            for (int i = 0; i < results.size(); i++) {
-                FaceDetectResult& r = results[i];
-                cout << " " << setw(4) << i 
-                    << setw(4) << r._num_frames_total
-                    << setw(4) << r._num_frames_faces
-                    << setw(4) << r._ordinal
-
-                    << setw(5) << setprecision(3) << r._scale_factor 
-                    << setw(4) << r._min_neighbors
-                    << " "   << setw(20) << r._image_name
-                    << " "   << setw(20) << r._cascade_name
-                     << endl;
-            }
-        }
+            showResultsRange(results, results.begin(), results.end());          
+         }
     }
     
     struct  ParamRanges {
