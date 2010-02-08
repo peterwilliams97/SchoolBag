@@ -2,6 +2,7 @@
 #include <OpenCV/OpenCV.h>
 #include <cassert>
 #include <iostream>
+#include <fstream>
 #include <iomanip>
 #include <algorithm>
 
@@ -94,7 +95,6 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         int numFalsePositives() const {
             int n = 0;
             for (int i = 0; i < _frames.size(); i++) {
-                int k = _frames[i].numFalsePositives();
                 n += _frames[i].numFalsePositives();
             }
             return n; 
@@ -346,13 +346,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	return detectFacesCrop(dp, 0);
     }
     
-    bool do_frames = true;
-/*
-    bool SortFrameByArea(const CroppedFrameList& f1, const CroppedFrameList& f2) {
-        return f1._face.width*f1._face.height > f2._face.width*f2._face.height;
-    }
-    */
-    
+     
     /*  
      *   Detect faces in an image and a set of frames (ROI rects) within that image
      */ 
@@ -431,10 +425,12 @@ const CFIndex CASCADE_NAME_LEN = 2048;
       //  cout << "resultsSortFunc in" << endl;
         int d = 0;
         if (d==0)
+            d = (r1._num_frames_faces != 0 ? 1 : 0) - (r2._num_frames_faces != 0 ? 1 : 0);
+        if (d==0)
             d = r2._ordinal - r1._ordinal;
-         if (d==0)
+        if (d==0)
             d = r2._num_false_positives - r1._num_false_positives;
-       if (d==0)
+        if (d==0)
             d = r1._num_frames_faces - r2._num_frames_faces;
         if (d==0)
             d = r1._image_name.compare(r2._image_name);
@@ -478,6 +474,22 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             << " "   << setw(32) << r._cascade_name
            
              << endl;
+    }
+    void  showOneResultFile(const FaceDetectResult& r, ofstream& of) { 
+        const string sep = ", ";
+       
+        of << setw(4) << r._num_frames_total
+            <<  sep << setw(4) << r._num_frames_faces
+            <<  sep << setw(4) << r._num_false_positives
+            <<  sep << setw(4) << r._face_rect.x
+            <<  sep << setw(4) << r._face_rect.y
+            <<  sep << setw(4) << r._face_rect.width
+            <<  sep << setw(4) << r._face_rect.height
+            <<  sep << setw(5) << setprecision(3) << r._scale_factor 
+            <<  sep << setw(4) << r._min_neighbors
+            <<  sep << setw(20) << r._image_name
+            <<  sep << setw(32) << r._cascade_name
+            << endl;
     }
     void showResultsRange(vector<FaceDetectResult>& results,
                             vector<FaceDetectResult>::iterator it0,
@@ -698,14 +710,23 @@ int main (int argc, char * const argv[]) {
 
     vector<FaceDetectResult> results, all_results;
     
+    ofstream of;
+    of.open("results.csv");
+    
     for (vector<string>::const_iterator it = pr._cascades.begin(); it != pr._cascades.end(); it++) {
         cout << "--------------------- " << *it << " -----------------" << endl;
         results = main_stuff(pr, *it);
         all_results.insert(all_results.end(), results.begin(), results.end());
         cout << "---------------- all_results --------------" << endl;
         showResults(all_results);
+        vector<FaceDetectResult>::const_iterator itt;
+        for (itt = results.begin(); itt != results.end(); itt++) {
+            showOneResultFile(*itt, of);
+        }
+        of.flush();
 
     }
+    of.close();
     cout << "================ all_results ==============" << endl;
     showResults(all_results);
     return 0;
