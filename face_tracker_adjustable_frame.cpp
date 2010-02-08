@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iostream>
 #include <iomanip>
+#include <algorithm>
 
 using namespace std;
 
@@ -64,25 +65,15 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     };
     
     CvRect EMPTY_RECT = { 0, 0, 0, 0 };
-    bool doing_fake_crops = false;
     /*
-        A cropped rect and list of faces detected in that rect
-    */
+     *   A cropped rect and list of faces detected in that rect
+     */
     struct CroppedFrame {
 	CvRect          _rect;
 	vector<CvRect>  _faces;
-	bool            _fakeFaces;
-        
-        CroppedFrame() {
-            _rect  = EMPTY_RECT;
-        }
-	
-	bool hasFaces() const {
-	    if (doing_fake_crops)
-		return _fakeFaces;
-	    else
-		return _faces.size() > 0;
-	}
+        CroppedFrame() {   _rect  = EMPTY_RECT;   }
+	bool hasFaces() const { return _faces.size() > 0; }
+        int  numFalsePositives() const { return max(0, (int)_faces.size() - 1); } // !@#$ Based on set of test images with 1 face each !!!
     };
     
     /*
@@ -91,19 +82,59 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         face rectangle in some way
     */
     struct CroppedFrameList {
-	CvRect _face;		// main face
+	CvRect _primary;		// Starting rectangle main face
 	std::vector<CroppedFrame> _frames;
-        int  numWithFaces() {
+        int  numWithFaces() const {
             int n = 0;
             for (int i = 0; i < _frames.size(); i++) {
                 n += _frames[i].hasFaces() ? 1 : 0;
             }
             return n;
         }
+        int numFalsePositives() const {
+            int n = 0;
+            for (int i = 0; i < _frames.size(); i++) {
+                int k = _frames[i].numFalsePositives();
+                n += _frames[i].numFalsePositives();
+            }
+            return n; 
+        }
+        // !@#$
+        CvRect getBestFace() {
+            CvRect r = EMPTY_RECT;
+            int x = 0, y = 0, w = 0, h = 0;
+            int n = 0;
+            for (int i = 0; i < _frames.size(); i++) {
+                if (_frames[i].hasFaces()) {
+                    r = _frames[i]._faces[0];
+                    x += r.x + r.width/2;
+                    y += r.y + r.height/2;
+                    w += r.width;
+                    h += r.height;
+                    ++n;
+                }
+            }
+            if (n > 0) {
+                x /= n;
+                y /= n;
+                w /= n;
+                h /= n;
+                r.x = x - w/2;
+                r.y = y - h/2;
+                r.width = w;
+                r.height = h;
+            }
+            return r;
+        }
     };
-    
-      
-    
+        
+          
+    string rectAsString(CvRect r) {
+        ostringstream s;
+        s << "[" << setw(3) << r.x << "," << setw(3) << r.y << "," << setw(3) << r.width << "," << setw(3)  << r.height << "]";
+        return s.str();
+    }
+
     
     int scaleX(const DrawParams* wp, int x) {
 	return cvRound((double)(wp->_small_image_width - x) * wp->_scale);
@@ -148,6 +179,9 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	return c;
     }
     
+    /*
+     * Draw a set of crop frames onto an image
+     */
     void drawCropFrames(const DrawParams* wp, const MultiFrameParams* mp, const CroppedFrameList* frameList) {
 	CvScalar onColor  = CV_RGB(255,255,255);
 	CvScalar offColor = CV_RGB(255,0,0);
@@ -155,7 +189,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	CvScalar color;
 //	int      diameter = max(5, (frameList->_face.width + frameList->_face.height)/50);	
 	
-	drawRect(wp, frameList->_face, mainColor);
+	drawRect(wp, frameList->_primary, mainColor);
        // drawMarker(wp, getCenter(frameList->_face), diameter, mainColor);
 	
 	for (int i = 0; i < frameList->_frames.size(); i++) {
@@ -174,11 +208,17 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	return cropped;
     }
     
+    
+    bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
+        return r1.width*r1.height > r2.width*r2.height;
+    }
+    
     /*
-	Detect faces in dp->_current_frame cropped to rect
-	Detect faces in whole image if rect == 0
+     *  Detects faces in dp->_current_frame cropped to rect
+     *  Detects faces in whole image if rect == 0
+     *  Returns list of face rectangles sorted by size
      */
-     CvSeq* detectFacesCrop(const DetectorState* dp, CvRect* rect)    {
+     vector<CvRect> detectFacesCrop(const DetectorState* dp, CvRect* rect)    {
 	CvSeq* faces = 0;
 	try { 
 	    if (rect) {
@@ -203,8 +243,13 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	catch (exception& e) {
 	    cerr << "OpenCV error: " << e.what() << endl;
 	}
-	
-	return faces;
+        
+	vector <CvRect> face_list(faces != 0 ? faces->total : 0);
+        for (int j = 0; j < face_list.size(); j++) {
+            face_list[j] = *((CvRect*) cvGetSeqElem (faces, j));
+        }
+        sort(face_list.begin(), face_list.end(), SortFacesByArea);
+	return face_list;
     }
    
     
@@ -222,8 +267,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
  
     /*
-        Create a multi-rect list in a cross shape with x and y arms
-    */
+     * Create a multi-rect list in a cross shape with x and y arms
+     */
      CroppedFrameList createMultiFrameList_Cross(const MultiFrameParams* mp, CvRect faceIn) {
         // Rectangle that covers whole face;
 	CvRect face = getPaddedFace(faceIn, mp->_outer_pad_width, mp->_outer_pad_height);
@@ -241,7 +286,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 	int cy = (paddedFace.height-cropHeight)/2;
 	
 	CroppedFrameList croppedFrameList;	
-	croppedFrameList._face = face;
+	croppedFrameList._primary = face;
         croppedFrameList._frames.resize(mp->_num_inc_x + mp->_num_inc_y);
 	CvRect rect;
         rect.width = cropWidth;
@@ -260,8 +305,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
     
     /*
-        Create a multi-rect list concentric from image rect
-    */
+     *   Create a list of concentric rectangles starting from image border
+     */
      CroppedFrameList createMultiFrameList_ConcentricImage(const DetectorState* dp) {
         double innerFrameFrac = 0.9;
         int    numFrames = 40;
@@ -278,7 +323,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             croppedFrameList._frames[i]._rect = rect;
       //      cout << "rect[" << i << "] = " << rect.x << ", " << rect.y << ", " << rect.width << ", " << rect.height << endl;
         }
-        croppedFrameList._face = croppedFrameList._frames[0]._rect;
+        croppedFrameList._primary = croppedFrameList._frames[0]._rect;
         return croppedFrameList;
      }
      
@@ -290,63 +335,52 @@ const CFIndex CASCADE_NAME_LEN = 2048;
      void detectFacesMultiFrame(const DetectorState* dp, CroppedFrameList* croppedFrameList) {	
         for (int i = 0; i < croppedFrameList->_frames.size(); i++) {
 	    CvRect rect =  croppedFrameList->_frames[i]._rect;
-	    CvSeq* faces = detectFacesCrop(dp, &rect);
-            vector <CvRect> vr(faces != 0 ? faces->total : 0);
-            for (int j = 0; j < vr.size(); j++) {
-                 vr[j] = *((CvRect*) cvGetSeqElem (faces, j));
-            }
-            croppedFrameList->_frames[i]._faces = vr;;
+            vector<CvRect> faces = detectFacesCrop(dp, &rect);
+            croppedFrameList->_frames[i]._faces = faces;
     //        cout << "Test " << i << ": " <<   croppedFrameList->_frames[i].hasFaces();
 	}
     }
     
     
-    CvSeq* detectFaces(DetectorState* dp)    {
+    vector<CvRect> detectFaces(DetectorState* dp)    {
 	return detectFacesCrop(dp, 0);
     }
     
     bool do_frames = true;
-
+/*
     bool SortFrameByArea(const CroppedFrameList& f1, const CroppedFrameList& f2) {
         return f1._face.width*f1._face.height > f2._face.width*f2._face.height;
     }
+    */
     
     /*  
      *   Detect faces in an image and a set of frames (ROI rects) within that image
-     */
-    std::vector<CroppedFrameList> detectFaces2(const DetectorState* dp,  int maxFaces)    {
-        MultiFrameParams mp;
-	CvSeq* faces = detectFacesCrop(dp, 0);
-	std::vector<CroppedFrameList> faceList(faces ? faces->total : 0);
-	for (int i = 0; i < faceList.size(); i++) {
-            faceList[i]._face = *((CvRect*) cvGetSeqElem (faces, i));
-        }
-        std::sort(faceList.begin(), faceList.end(), SortFrameByArea);
-        if (maxFaces >= 0 && faceList.size() > maxFaces) 
-            faceList.resize(maxFaces);
-            
-        for (int i = 0; i < faceList.size(); i++) {
-	    CvRect face = faceList[i]._face;
-            //CroppedFrameList frameList = createMultiFrameList_Cross(mp, face);
-            CroppedFrameList frameList = createMultiFrameList_ConcentricImage(dp);
-            detectFacesMultiFrame(dp, &frameList);
-	    faceList[i] = frameList;
-	}
-	return faceList;
+     */ 
+    CroppedFrameList detectFaces2(const DetectorState* dp)    {
+        //CroppedFrameList frameList = createMultiFrameList_Cross(mp, face);
+        CroppedFrameList frameList = createMultiFrameList_ConcentricImage(dp);
+        detectFacesMultiFrame(dp, &frameList);
+	return frameList;
     }
-    
+
+ 
+    /*
+     *  Process (detect faces) in set of frames within an image with a particular
+     *  combination of settings (in dp)
+     *  Returns a list of results, one for each frame
+     */
        
-    std::vector<CroppedFrameList>  
+    CroppedFrameList  
         processOneImage2(const DetectorState& dp,
 			 const DrawParams& wp) {
 
-	std::vector<CroppedFrameList> faceList = detectFaces2(&dp, 1);  
+	CroppedFrameList frameList = detectFaces2(&dp);  
 	
 	// draw faces
 	cvFlip (dp._current_frame, wp._draw_image, 1);
         cvShowImage (WINDOW_NAME, wp._draw_image); 
         
-        return faceList;
+        return frameList;
     }
     
     struct FaceDetectResult {
@@ -357,8 +391,12 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         int     _min_neighbors;
         string  _image_name;
         string  _cascade_name;
+        CvRect  _face_rect;
+        int     _num_false_positives;
         
-        FaceDetectResult(int num_faces_total, int num_frames_faces, double scale_factor, int min_neighbors, string image_name, string cascade_name) {
+        FaceDetectResult(int num_faces_total, int num_frames_faces, double scale_factor, int min_neighbors, 
+                            string image_name, string cascade_name, 
+                            CvRect face_rect, int num_false_positives) {
             _num_frames_total = num_faces_total;
             _num_frames_faces = num_frames_faces;
             _scale_factor = scale_factor;
@@ -366,6 +404,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             _image_name = image_name;
             _cascade_name = cascade_name;
             _ordinal = -1;
+            _face_rect = face_rect;
+            _num_false_positives = num_false_positives;
         }
         FaceDetectResult& operator=(const FaceDetectResult& r) {
             _num_frames_total = r._num_frames_total;
@@ -375,6 +415,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             _min_neighbors    = r._min_neighbors;
             _image_name       = r._image_name;
             _cascade_name     = r._cascade_name;
+            _face_rect        = r._face_rect;
+            _num_false_positives = r._num_false_positives;
             return *this;
         }
     };
@@ -422,13 +464,17 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
     void  showOneResult(const FaceDetectResult& r) { 
         cout << setw(4) << r._num_frames_total
-            << setw(4) << r._num_frames_faces
             << setw(4) << r._ordinal
+            << setw(4) << r._num_frames_faces
+            
+             << "  "  << setw(4) << r._num_false_positives
+            << "  "  << setw(10) << rectAsString(r._face_rect)
 
             << setw(5) << setprecision(3) << r._scale_factor 
             << setw(4) << r._min_neighbors
             << " "   << setw(20) << r._image_name
-            << " "   << setw(20) << r._cascade_name
+            << " "   << setw(31) << r._cascade_name
+           
              << endl;
     }
     void showResultsRange(vector<FaceDetectResult>& results,
@@ -483,23 +529,23 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         int    min_neighbors = 2;
         dp._scale_factor = scale_factor;
         dp._min_neighbors = min_neighbors;
-        vector<CroppedFrameList> faceList = processOneImage2(dp, wp);
+        CroppedFrameList frameList; // = processOneImage2(dp, wp);
         vector<FaceDetectResult> results;
         int i = 0;
     //   for (min_neighbors = 2; min_neighbors <= 7; min_neighbors++) {
    //         for (scale_factor = 1.01; scale_factor <= 1.5; scale_factor += .005) {
-       for (min_neighbors = pr._min_neighbors_min; min_neighbors <= pr._min_neighbors_max; min_neighbors += pr._min_neighbors_delta) {
+        for (min_neighbors = pr._min_neighbors_min; min_neighbors <= pr._min_neighbors_max; min_neighbors += pr._min_neighbors_delta) {
             for (scale_factor = pr._scale_factor_min; scale_factor <= pr._scale_factor_max; scale_factor += pr._scale_factor_delta) {
             //  cout << "******************* Run " << i+1 << " ******************" << endl;
                 dp._scale_factor = scale_factor;
                 dp._min_neighbors = min_neighbors;
-                faceList = processOneImage2(dp, wp);
-                if (faceList.size() > 0) {
-                    CroppedFrameList frameList = faceList[0];
-                    FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), scale_factor, min_neighbors, dp._image_name, dp._cascade_name);
-                    results.push_back(r);
+                frameList = processOneImage2(dp, wp);
+                int num_false_positives = frameList.numFalsePositives(); // !@#$ This will be true for the test set of images
+                FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), scale_factor, min_neighbors, 
+                        dp._image_name, dp._cascade_name, frameList.getBestFace(), num_false_positives );
+                results.push_back(r);
                //     cout << "Num frames = " << setw(4)  << frameList._frames.size() << endl;
-                    cout << " " << setw(4) << i 
+                cout << " " << setw(4) << i 
                         << setw(5) << setprecision(3) << scale_factor 
                         << setw(4) << min_neighbors
                         << setw(4) << frameList.numWithFaces()
@@ -509,8 +555,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             //   cout << "$$$$$$$$$$$$$$$$$$$ Run " << i+1 << " $$$$$$$$$$$$$$$$$$" << endl;
                 ++i;
             }
-        }
-        
+       
         cout << "=========================================================" << endl;
         computeResultOrder(results, results.begin(), results.end());
         
@@ -622,6 +667,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         cout << "cwd is " << cwd << endl;
     }
 
+
 }
 
 
@@ -629,22 +675,21 @@ int main (int argc, char * const argv[]) {
     startup();
     
     ParamRanges pr;
-    pr._min_neighbors_min = 1;
+    pr._min_neighbors_min = 0;
     pr._min_neighbors_max = 2;
-    pr._min_neighbors_delta = 2;
-    pr._scale_factor_min = 1.01;
-    pr._scale_factor_max = 1.2;
-    pr._scale_factor_delta = 0.7;
+    pr._min_neighbors_delta = 1;
+    pr._scale_factor_min = 1.05;
+    pr._scale_factor_max = 1.3;
+    pr._scale_factor_delta = 0.05;
     pr._cascades.push_back("haarcascade_frontalface_alt2");
     pr._cascades.push_back("haarcascade_frontalface_alt2");
     pr._cascades.push_back("haarcascade_frontalface_alt_tree");
     pr._cascades.push_back("haarcascade_frontalface_default");
 
-   /* pr._image_names.push_back("brad-profile-1.jpg");
+    pr._image_names.push_back("brad-profile-1.jpg");
     pr._image_names.push_back("brad-profile-2.jpg");
     pr._image_names.push_back("john_in_bed.jpg");
     pr._image_names.push_back("madeline_smiling.jpg");
-    */
     pr._image_names.push_back("madeline_shades.jpg");
     pr._image_names.push_back("madeline_silly.jpg");
 
@@ -655,8 +700,11 @@ int main (int argc, char * const argv[]) {
         cout << "--------------------- " << *it << " -----------------" << endl;
         results = main_stuff(pr, *it);
         all_results.insert(all_results.end(), results.begin(), results.end());
+        cout << "---------------- all_results --------------" << endl;
+        showResults(all_results);
+
     }
-    cout << "---------------- all_results --------------" << endl;
+    cout << "================ all_results ==============" << endl;
     showResults(all_results);
     return 0;
 }
