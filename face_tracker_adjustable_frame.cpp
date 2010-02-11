@@ -13,6 +13,8 @@ namespace  {
 const char  * WINDOW_NAME  = "Face Tracker with Sub-Frames";
 const CFIndex CASCADE_NAME_LEN = 2048;
       char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
+      string  test_file_dir = "/Users/user/Desktop/percipo_pics/";
+
  
     /* 
      *  All the members of DetectorState are needed for a cvHaarDetectObjects() call
@@ -727,15 +729,26 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         cout << "cwd is " << cwd << endl;
     }
 
+    string trim(const string& in) {
+        string out = "";
+        string whitespace = " \t\r\n";
+        int p2 = in.find_last_not_of(whitespace);
+        if (p2 != string::npos) {
+            int p1 = in.find_first_not_of(whitespace);
+            if (p1 == string::npos) p1 = 0;
+            out = in.substr(p1, (p2-p1)+1);
+        }
+        return out;
+    }
+    
     /*
      *  Read a list of files and settings. Comma separated. One file per line.
      *
      */
-   
-    
-    vector<FileEntry> readFileList(const string conf_file_name) {
+     vector<FileEntry> readFileList(const string conf_file_name) {
         ifstream input_file;
-        input_file.open(conf_file_name.c_str(), fstream::in);
+        string file_path = test_file_dir + conf_file_name;
+        input_file.open(file_path.c_str(), fstream::in);
         if (!input_file.is_open()) {
             cerr << "Could not open " << conf_file_name << endl;
             exit(1);
@@ -745,19 +758,22 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         string line, delimiters = ",";
         while (getline(input_file, line)) {
             FileEntry entry;
+            line = trim(line);
+            if (line.size() == 0)
+                break;
             string::size_type last_pos = 0;
             string::size_type pos = line.find_first_of(delimiters, last_pos);
             if (pos == string::npos || last_pos == string::npos) {
                 cerr << "Bad line " << n << " in " << conf_file_name << endl;
-                exit(-1);
+                exit(2);
             }
-            entry._image_name = line.substr(last_pos, pos - last_pos);
-           pos = line.find_first_of(delimiters, last_pos);
+            entry._image_name = test_file_dir + trim(line.substr(last_pos, pos - last_pos));
+            pos = line.find_first_of(delimiters, last_pos);
             if (pos == string::npos || last_pos == string::npos) {
                 cerr << "Bad line " << n << " in " << conf_file_name << endl;
-                exit(-1);
+                exit(3);
             }
-            entry._rotation = atof(line.substr(last_pos, pos - last_pos).c_str());
+            entry._rotation = atof(trim(line.substr(last_pos, pos - last_pos)).c_str());
             file_entries.push_back(entry);
         }
         input_file.close();
@@ -786,6 +802,7 @@ int main (int argc, char * const argv[]) {
     pr._cascades.push_back("haarcascade_frontalface_alt_tree");
     pr._cascades.push_back("haarcascade_frontalface_default");
 
+#if 0
     FileEntry e[] = {
         {"brad-profile-1.jpg",  0.0},
         {"brad-profile-2.jpg",  0.0},
@@ -796,7 +813,10 @@ int main (int argc, char * const argv[]) {
     for (int i = 0; i < sizeof(e)/sizeof(e[0]); i++) {
         pr._file_entries.push_back(e[i]);
     }
-    
+#else
+     pr._file_entries = readFileList("files_list.csv") ;
+#endif
+
     vector<FaceDetectResult> results, all_results;
     
     pr._output_file.open("results.csv");
