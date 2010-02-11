@@ -92,6 +92,15 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             }
             return n;
         }
+        int maxConsecutiveWithFaces() const {
+            int max_consecutive = 0;
+            int n = 0;
+            for (int i = 0; i < _frames.size(); i++) {
+                n = _frames[i].hasFaces() ? n+1 : 0;
+                max_consecutive = max(max_consecutive, n);
+            }
+            return max_consecutive;
+        }
         int numFalsePositives() const {
             int n = 0;
             for (int i = 0; i < _frames.size(); i++) {
@@ -380,6 +389,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     struct FaceDetectResult {
         int     _num_frames_total;
         int     _num_frames_faces;
+        int     _max_consecutive_faces;
         int     _ordinal;
         double  _scale_factor;
         int     _min_neighbors;
@@ -388,11 +398,13 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         CvRect  _face_rect;
         int     _num_false_positives;
         
-        FaceDetectResult(int num_faces_total, int num_frames_faces, double scale_factor, int min_neighbors, 
+        FaceDetectResult(int num_faces_total, int num_frames_faces, int max_consecutive_faces, 
+                        double scale_factor, int min_neighbors, 
                             string image_name, string cascade_name, 
                             CvRect face_rect, int num_false_positives) {
             _num_frames_total = num_faces_total;
             _num_frames_faces = num_frames_faces;
+            _max_consecutive_faces = max_consecutive_faces;
             _scale_factor = scale_factor;
             _min_neighbors = min_neighbors;
             _image_name = image_name;
@@ -404,6 +416,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         FaceDetectResult& operator=(const FaceDetectResult& r) {
             _num_frames_total = r._num_frames_total;
             _num_frames_faces = r._num_frames_faces;
+            _max_consecutive_faces = r._max_consecutive_faces;
             _ordinal          = r._ordinal;
             _scale_factor     = r._scale_factor;
             _min_neighbors    = r._min_neighbors;
@@ -480,6 +493,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
        
         of << setw(4) << r._num_frames_total
             <<  sep << setw(4) << r._num_frames_faces
+            <<  sep << setw(4) << r._max_consecutive_faces
             <<  sep << setw(4) << r._num_false_positives
             <<  sep << setw(4) << r._face_rect.x
             <<  sep << setw(4) << r._face_rect.y
@@ -496,6 +510,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
        
         of << setw(4) << "frames"
             <<  sep << setw(4) << "with faces"
+            <<  sep << setw(4) << "consecutive faces"
             <<  sep << setw(4) << "false +ves"
             <<  sep << setw(4) << "x"
             <<  sep << setw(4) << "y"
@@ -545,11 +560,22 @@ const CFIndex CASCADE_NAME_LEN = 2048;
          }
     }
     
+    /*
+     * File to be processed
+     */
+    struct FileEntry {
+        string _image_name;
+        double _rotation;
+    };
+    
+    /*
+     *  Ranges of inputs to the program
+     */
     struct  ParamRanges {
-        int    _min_neighbors_min, _min_neighbors_max, _min_neighbors_delta;
-        double _scale_factor_min,  _scale_factor_max,  _scale_factor_delta;
-        vector<string> _image_names;
-        vector<string> _cascades;
+        int     _min_neighbors_min, _min_neighbors_max, _min_neighbors_delta;
+        double  _scale_factor_min,  _scale_factor_max,  _scale_factor_delta;
+        vector<FileEntry>   _file_entries;
+        vector<string>      _cascades;
         
         // !@#$ does not belong here
         mutable ofstream _output_file;
@@ -591,7 +617,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
                 dp._min_neighbors = min_neighbors;
                 frameList = processOneImage2(dp, wp);
                 int num_false_positives = frameList.numFalsePositives(); // !@#$ This will be true for the test set of images
-                FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), scale_factor, min_neighbors, 
+                FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), frameList.maxConsecutiveWithFaces(),
+                        scale_factor, min_neighbors, 
                         dp._image_name, dp._cascade_name, frameList.getBestFace(), num_false_positives );
                 results.push_back(r);
                 showOneResultFile(r, pr._output_file);
@@ -616,18 +643,18 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         return results;
     }
     
-     vector<FaceDetectResult> 
+    vector<FaceDetectResult> 
         detectInOneImage(DetectorState& dp,
                    const ParamRanges& pr,
-                   const string imageName) {
+                   const FileEntry& entry) {
         const int scale = 2;
          
         DrawParams wp;
       
-        dp._image_name = imageName;
-        dp._current_frame = cvLoadImage(imageName.c_str());
+        dp._image_name = entry._image_name;
+        dp._current_frame = cvLoadImage(dp._image_name.c_str());
         if (!dp._current_frame) {
-            cerr << "Could not find " << imageName << endl;
+            cerr << "Could not find " << dp._image_name << endl;
             abort();
         }
         dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
@@ -682,8 +709,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             abort ();
  
         vector<FaceDetectResult>  all_results;
-        for (vector<string>::const_iterator it = pr._image_names.begin(); it != pr._image_names.end(); it++) {
-            cout << "--------------------- " << *it << " -----------------" << endl;
+        for (vector<FileEntry>::const_iterator it = pr._file_entries.begin(); it != pr._file_entries.end(); it++) {
+            cout << "--------------------- " << (*it)._image_name << " -----------------" << endl;
             vector<FaceDetectResult>  results = detectInOneImage(dp, pr, *it) ;   
             all_results.insert(all_results.end(), results.begin(), results.end());
         }
@@ -700,8 +727,44 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         cout << "cwd is " << cwd << endl;
     }
 
-
+    /*
+     *  Read a list of files and settings. Comma separated. One file per line.
+     *
+     */
+   
+    
+    vector<FileEntry> readFileList(const string conf_file_name) {
+        ifstream input_file;
+        input_file.open(conf_file_name.c_str(), fstream::in);
+        if (!input_file.is_open()) {
+            cerr << "Could not open " << conf_file_name << endl;
+            exit(1);
+        }
+        vector<FileEntry> file_entries;
+        int n = 1;
+        string line, delimiters = ",";
+        while (getline(input_file, line)) {
+            FileEntry entry;
+            string::size_type last_pos = 0;
+            string::size_type pos = line.find_first_of(delimiters, last_pos);
+            if (pos == string::npos || last_pos == string::npos) {
+                cerr << "Bad line " << n << " in " << conf_file_name << endl;
+                exit(-1);
+            }
+            entry._image_name = line.substr(last_pos, pos - last_pos);
+           pos = line.find_first_of(delimiters, last_pos);
+            if (pos == string::npos || last_pos == string::npos) {
+                cerr << "Bad line " << n << " in " << conf_file_name << endl;
+                exit(-1);
+            }
+            entry._rotation = atof(line.substr(last_pos, pos - last_pos).c_str());
+            file_entries.push_back(entry);
+        }
+        input_file.close();
+        return file_entries;
+    }
 }
+
 
 
 int main (int argc, char * const argv[]) {
@@ -723,14 +786,17 @@ int main (int argc, char * const argv[]) {
     pr._cascades.push_back("haarcascade_frontalface_alt_tree");
     pr._cascades.push_back("haarcascade_frontalface_default");
 
-    pr._image_names.push_back("brad-profile-1.jpg");
-    pr._image_names.push_back("brad-profile-2.jpg");
-    pr._image_names.push_back("john_in_bed.jpg");
-    pr._image_names.push_back("madeline_smiling.jpg");
-    pr._image_names.push_back("madeline_shades.jpg");
-    pr._image_names.push_back("madeline_silly.jpg");
-
-
+    FileEntry e[] = {
+        {"brad-profile-1.jpg",  0.0},
+        {"brad-profile-2.jpg",  0.0},
+        {"john_in_bed.jpg",     0.0},
+        {"madeline_shades.jpg", 0.0},
+        {"madeline_silly.jpg",  0.0},
+    } ;
+    for (int i = 0; i < sizeof(e)/sizeof(e[0]); i++) {
+        pr._file_entries.push_back(e[i]);
+    }
+    
     vector<FaceDetectResult> results, all_results;
     
     pr._output_file.open("results.csv");
