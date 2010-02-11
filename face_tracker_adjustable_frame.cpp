@@ -491,6 +491,23 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             <<  sep << setw(32) << r._cascade_name
             << endl;
     }
+    void  showHeaderFile(ofstream& of) { 
+        const string sep = ", ";
+       
+        of << setw(4) << "frames"
+            <<  sep << setw(4) << "with faces"
+            <<  sep << setw(4) << "false +ves"
+            <<  sep << setw(4) << "x"
+            <<  sep << setw(4) << "y"
+            <<  sep << setw(4) << "width"
+            <<  sep << setw(4) << "height"
+            <<  sep << setw(5) << "scale_factor" 
+            <<  sep << setw(4) << "min_neighbors"
+            <<  sep << setw(20) << "image_name"
+            <<  sep << setw(32) << "cascade_name"
+            << endl;
+    }
+
     void showResultsRange(vector<FaceDetectResult>& results,
                             vector<FaceDetectResult>::iterator it0,
                             vector<FaceDetectResult>::iterator it1) {
@@ -533,7 +550,27 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         double _scale_factor_min,  _scale_factor_max,  _scale_factor_delta;
         vector<string> _image_names;
         vector<string> _cascades;
-   };
+        
+        // !@#$ does not belong here
+        mutable ofstream _output_file;
+        mutable long     _last_flush_time;
+        long     _flush_dt;
+        
+        ParamRanges() {
+            _last_flush_time = 0L;
+            _flush_dt = 5L;
+        }
+        void flushIfNecessary() const {
+            long t = time(0);
+            if (t > _last_flush_time + _flush_dt) {
+                _output_file.flush();
+                _last_flush_time = t;
+            }
+        }
+        
+    };
+    
+    
      
     vector<FaceDetectResult>  
         processOneImage(      DetectorState& dp,
@@ -546,8 +583,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         CroppedFrameList frameList; // = processOneImage2(dp, wp);
         vector<FaceDetectResult> results;
         int i = 0;
-    //   for (min_neighbors = 2; min_neighbors <= 7; min_neighbors++) {
-   //         for (scale_factor = 1.01; scale_factor <= 1.5; scale_factor += .005) {
+ 
         for (min_neighbors = pr._min_neighbors_min; min_neighbors <= pr._min_neighbors_max; min_neighbors += pr._min_neighbors_delta) {
             for (scale_factor = pr._scale_factor_min; scale_factor <= pr._scale_factor_max; scale_factor += pr._scale_factor_delta) {
             //  cout << "******************* Run " << i+1 << " ******************" << endl;
@@ -558,6 +594,9 @@ const CFIndex CASCADE_NAME_LEN = 2048;
                 FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), scale_factor, min_neighbors, 
                         dp._image_name, dp._cascade_name, frameList.getBestFace(), num_false_positives );
                 results.push_back(r);
+                showOneResultFile(r, pr._output_file);
+                pr.flushIfNecessary();
+       
                //     cout << "Num frames = " << setw(4)  << frameList._frames.size() << endl;
                 cout << " " << setw(4) << i 
                         << setw(5) << setprecision(3) << scale_factor 
@@ -573,24 +612,6 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         cout << "=========================================================" << endl;
         computeResultOrder(results, results.begin(), results.end());
         
-        /*
-        for (vector<FaceDetectResult>::const_iterator it = results.begin(); it != results.end(); it++)
-            resultsSortFunc(*it, *it);
-        cout << "=========================================================" << endl;
-
-        cout << " sort(results.begin(), results.end(), resultsSortFunc" << endl;
-        sort(results.begin(), results.end(), resultsSortFunc);
-        for (int i = 0; i < results.size(); i++) {
-            FaceDetectResult& r = results[i];
-           cout << " " << setw(4) << i 
-                << setw(4) << r._num_frames_total
-                << setw(4) << r._num_frames_faces
-                << setw(5) << setprecision(3) << r._scale_factor 
-                << setw(4) << r._min_neighbors
-            //    << "   "   << r._image_name
-                 << endl;
-        }
-        */
         showResults(results);
         return results;
     }
@@ -621,7 +642,6 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             // wait a tenth of a second for keypress and window drawing
         cvWaitKey (10);
        
-
         cvReleaseImage(&dp._current_frame); 
         cvReleaseImage(&dp._gray_image);
         cvReleaseImage(&dp._small_image);
@@ -661,7 +681,6 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         if (!dp._cascade)
             abort ();
  
-  
         vector<FaceDetectResult>  all_results;
         for (vector<string>::const_iterator it = pr._image_names.begin(); it != pr._image_names.end(); it++) {
             cout << "--------------------- " << *it << " -----------------" << endl;
@@ -688,6 +707,10 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 int main (int argc, char * const argv[]) {
     startup();
     
+//    string response;
+    
+//    cin >> response;
+ //   cout << "========= " << response << " ===========" << endl;
     ParamRanges pr;
     pr._min_neighbors_min = 0;
     pr._min_neighbors_max = 2;
@@ -710,8 +733,8 @@ int main (int argc, char * const argv[]) {
 
     vector<FaceDetectResult> results, all_results;
     
-    ofstream of;
-    of.open("results.csv");
+    pr._output_file.open("results.csv");
+    showHeaderFile(pr._output_file);
     
     for (vector<string>::const_iterator it = pr._cascades.begin(); it != pr._cascades.end(); it++) {
         cout << "--------------------- " << *it << " -----------------" << endl;
@@ -719,14 +742,9 @@ int main (int argc, char * const argv[]) {
         all_results.insert(all_results.end(), results.begin(), results.end());
         cout << "---------------- all_results --------------" << endl;
         showResults(all_results);
-        vector<FaceDetectResult>::const_iterator itt;
-        for (itt = results.begin(); itt != results.end(); itt++) {
-            showOneResultFile(*itt, of);
-        }
-        of.flush();
-
     }
-    of.close();
+    
+    pr._output_file.close();
     cout << "================ all_results ==============" << endl;
     showResults(all_results);
     return 0;
