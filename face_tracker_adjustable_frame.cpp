@@ -231,7 +231,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
      */
      vector<CvRect> detectFacesCrop(const DetectorState* dp, CvRect* rect)    {
 	CvSeq* faces = 0;
-	try { 
+	//try { 
 	    if (rect) {
 		cvSetImageROI(dp->_current_frame, *rect);
 		cvSetImageROI(dp->_gray_image, *rect);
@@ -250,10 +250,10 @@ const CFIndex CASCADE_NAME_LEN = 2048;
 		cvResetImageROI(dp->_current_frame);
 		cvResetImageROI(dp->_gray_image);
 	    }
-	}
-	catch (exception& e) {
-	    cerr << "OpenCV error: " << e.what() << endl;
-	}
+	//}
+	//catch (exception& e) {
+	//    cerr << "OpenCV error: " << e.what() << endl;
+	//}
         
 	vector <CvRect> face_list(faces != 0 ? faces->total : 0);
         for (int j = 0; j < face_list.size(); j++) {
@@ -399,7 +399,13 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         string  _cascade_name;
         CvRect  _face_rect;
         int     _num_false_positives;
+        mutable int     _dbg_index;
         
+        FaceDetectResult() {
+            cout << "FaceDetectResult::FaceDetectResult()" << endl;
+            _image_name = _cascade_name = "";
+            _dbg_index  = -1;
+        }
         FaceDetectResult(int num_faces_total, int num_frames_faces, int max_consecutive_faces, 
                         double scale_factor, int min_neighbors, 
                             string image_name, string cascade_name, 
@@ -414,8 +420,12 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             _ordinal = -1;
             _face_rect = face_rect;
             _num_false_positives = num_false_positives;
+             _dbg_index  = -2;
         }
-        FaceDetectResult& operator=(const FaceDetectResult& r) {
+        FaceDetectResult& assign(const FaceDetectResult& r)  {
+            if (r._dbg_index == 0) {
+                cerr << "Bogus FaceDetectResult record" << endl;
+            }
             _num_frames_total = r._num_frames_total;
             _num_frames_faces = r._num_frames_faces;
             _max_consecutive_faces = r._max_consecutive_faces;
@@ -426,25 +436,48 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             _cascade_name     = r._cascade_name;
             _face_rect        = r._face_rect;
             _num_false_positives = r._num_false_positives;
+            _dbg_index          = r._dbg_index;
             return *this;
+        }
+
+        FaceDetectResult& operator=(const FaceDetectResult& r)  {
+            cout << "operator=() from: " << r._dbg_index << " to:" << _dbg_index << endl;
+            return assign(r);
+        }
+        FaceDetectResult(const FaceDetectResult& r) {
+            cout << "copy ctor " << r._dbg_index << endl;
+            assign(r);
         }
     };
     
-    bool resultsSortFuncImageName(const FaceDetectResult r1, const FaceDetectResult& r2) {
+    
+    void checkResults(const vector<FaceDetectResult> results, const string title) {
+        vector<FaceDetectResult>::const_iterator rit;
+        int i = 0;
+        cout << "---------------- checkResults() !@#$ " << title << ": " << results.size() << " --------------" << endl;
+        for (rit = results.begin(); rit != results.end(); rit++) {
+            ++i;
+            cout << i << ": " << (*rit)._image_name << ", ";
+            (*rit)._dbg_index = i;
+        }
+        cout << endl;
+    }
+    
+    bool resultsSortFuncImageName(const FaceDetectResult& r1, const FaceDetectResult& r2) {
         return (r1._image_name.compare(r2._image_name) > 0);
     }
-    bool resultsSortFuncOrder(const FaceDetectResult r1, const FaceDetectResult& r2) {
+    bool resultsSortFuncOrder(const FaceDetectResult& r1, const FaceDetectResult& r2) {
         return r1._num_frames_faces > r2._num_frames_faces;
     }
-    bool resultsSortFunc(const FaceDetectResult r1, const FaceDetectResult& r2) {
+    bool resultsSortFunc(const FaceDetectResult& r1, const FaceDetectResult& r2) {
       //  cout << "resultsSortFunc in" << endl;
         int d = 0;
         if (d==0)
             d = (r1._num_frames_faces != 0 ? 1 : 0) - (r2._num_frames_faces != 0 ? 1 : 0);
-        if (d==0)
-            d = r2._ordinal - r1._ordinal;
-        if (d==0)
+         if (d==0)
             d = r2._num_false_positives - r1._num_false_positives;
+      //  if (d==0)
+      //      d = r2._ordinal - r1._ordinal;
         if (d==0)
             d = r1._num_frames_faces - r2._num_frames_faces;
         if (d==0)
@@ -459,22 +492,23 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         //cout << "resultsSortFunc out" << endl;
         return (d >= 0);
     }
-    
+    /* !@#$ screws up vector order leading to a subsequent crash in sort()
     void computeResultOrder(vector<FaceDetectResult>& results,
                             vector<FaceDetectResult>::iterator it0,
                             vector<FaceDetectResult>::iterator it1) {
         sort(it0, it1, resultsSortFuncOrder);
         int ordinal = -1;
-        int numFramesFaces = -1;
+        int num_frames_faces = -1;
         vector<FaceDetectResult>::iterator it;
         for (it = it0; it != it1; it++) {
-            if ((*it)._num_frames_faces != numFramesFaces) {
+            if ((*it)._num_frames_faces != num_frames_faces) {
                 ++ordinal;
-                numFramesFaces = (*it)._num_frames_faces;
+                num_frames_faces = (*it)._num_frames_faces;
             }
             (*it)._ordinal = ordinal;
         }
     }
+    */
     void  showOneResult(const FaceDetectResult& r) { 
         cout << setw(4) << r._num_frames_total
             << setw(4) << r._ordinal
@@ -543,19 +577,21 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             sort(results.begin(), results.end(), resultsSortFuncImageName);
             vector<FaceDetectResult>::iterator it, it0 = results.begin();
         
-              for (it = results.begin(); it != results.end(); it++) {
+            for (it = results.begin(); it != results.end(); it++) {
                 if ((*it)._image_name.compare((*it0)._image_name) != 0) {
-                    computeResultOrder(results, it0, it);
+               //     computeResultOrder(results, it0, it);
                     cout << "++++++" << (*it0)._image_name << endl;
                     showResultsRange(results, it0, it);
                     it0 = it;
                     cout << "++++++"  << endl;
-              }
+                }
             }
             if (it != it0) {
-                computeResultOrder(results, it0, it);
+           //     computeResultOrder(results, it0, it);
                 showResultsRange(results, it0, it);
             }
+            
+            checkResults(results, "showResults");
             cout << " sort(results.begin(), results.end(), resultsSortFunc" << endl;
             sort(results.begin(), results.end(), resultsSortFunc);
             showResultsRange(results, results.begin(), results.end());          
@@ -779,6 +815,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         input_file.close();
         return file_entries;
     }
+    
+    
 }
 
 
@@ -802,13 +840,13 @@ int main (int argc, char * const argv[]) {
     pr._cascades.push_back("haarcascade_frontalface_alt_tree");
     pr._cascades.push_back("haarcascade_frontalface_default");
 
-#if 0
+#if 1
     FileEntry e[] = {
         {"brad-profile-1.jpg",  0.0},
         {"brad-profile-2.jpg",  0.0},
-        {"john_in_bed.jpg",     0.0},
-        {"madeline_shades.jpg", 0.0},
-        {"madeline_silly.jpg",  0.0},
+    //    {"john_in_bed.jpg",     0.0},
+   //     {"madeline_shades.jpg", 0.0},
+    //    {"madeline_silly.jpg",  0.0},
     } ;
     for (int i = 0; i < sizeof(e)/sizeof(e[0]); i++) {
         pr._file_entries.push_back(e[i]);
@@ -825,7 +863,9 @@ int main (int argc, char * const argv[]) {
     for (vector<string>::const_iterator it = pr._cascades.begin(); it != pr._cascades.end(); it++) {
         cout << "--------------------- " << *it << " -----------------" << endl;
         results = main_stuff(pr, *it);
+        checkResults(results, "results = main_stuff(pr, *it)");
         all_results.insert(all_results.end(), results.begin(), results.end());
+        checkResults(all_results, "all_results.insert(all_results.end(), results.begin(), results.end())");
         cout << "---------------- all_results --------------" << endl;
         showResults(all_results);
     }
