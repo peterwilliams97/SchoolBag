@@ -675,7 +675,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             }
        
         cout << "=========================================================" << endl;
-        computeResultOrder(results, results.begin(), results.end());
+    //    computeResultOrder(results, results.begin(), results.end());
         
         showResults(results);
         return results;
