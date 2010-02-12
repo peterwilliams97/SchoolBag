@@ -8,7 +8,10 @@
 
 using namespace std;
 
-namespace  {
+//#define sort !@#$
+#define SORT_AND_SHOW 0
+
+//namespace  {
     
 const char  * WINDOW_NAME  = "Face Tracker with Sub-Frames";
 const CFIndex CASCADE_NAME_LEN = 2048;
@@ -399,12 +402,12 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         string  _cascade_name;
         CvRect  _face_rect;
         int     _num_false_positives;
-  //      mutable int     _dbg_index;
+        int     _dbg_index;
         
         FaceDetectResult() {
      //       cout << "FaceDetectResult::FaceDetectResult()" << endl;
             _image_name = _cascade_name = "";
-   //         _dbg_index  = -1;
+            _dbg_index  = -1;
         }
         FaceDetectResult(int num_faces_total, int num_frames_faces, int max_consecutive_faces, 
                         double scale_factor, int min_neighbors, 
@@ -420,7 +423,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             _ordinal = -1;
             _face_rect = face_rect;
             _num_false_positives = num_false_positives;
-  //           _dbg_index  = -2;
+            _dbg_index  = -2;
         }
         FaceDetectResult& assign(const FaceDetectResult& r)  {
       //      if (r._dbg_index == 0) {
@@ -436,7 +439,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             _cascade_name     = r._cascade_name;
             _face_rect        = r._face_rect;
             _num_false_positives = r._num_false_positives;
-      //      _dbg_index          = r._dbg_index;
+            _dbg_index          = r._dbg_index;
             return *this;
         }
 
@@ -445,24 +448,25 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             return assign(r);
         }
         FaceDetectResult(const FaceDetectResult& r) {
-    //        cout << "copy ctor " << r._dbg_index << endl;
+         cout << "copy ctor " << &r <<  endl;
+        //   cout << "copy ctor " << r._dbg_index <<  endl;
             assign(r);
         }
     };
     
-    /*
-    void checkResults(const vector<FaceDetectResult> results, const string title) {
-        vector<FaceDetectResult>::const_iterator rit;
+    
+    void checkResults( vector<FaceDetectResult> results, const string title) {
+        vector<FaceDetectResult>::iterator rit;
         int i = 0;
         cout << "---------------- checkResults() !@#$ " << title << ": " << results.size() << " --------------" << endl;
         for (rit = results.begin(); rit != results.end(); rit++) {
             ++i;
-            cout << i << ": " << (*rit)._image_name << ", ";
             (*rit)._dbg_index = i;
+             cout << (*rit)._dbg_index << ": " << (*rit)._image_name << ", ";
         }
         cout << endl;
     }
-    */
+    #define CHECK_RESULTS(r, t) checkResults(r, t)
     
     bool resultsSortFuncImageName(const FaceDetectResult& r1, const FaceDetectResult& r2) {
         return (r1._image_name.compare(r2._image_name) > 0);
@@ -470,7 +474,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     bool resultsSortFuncOrder(const FaceDetectResult& r1, const FaceDetectResult& r2) {
         return r1._num_frames_faces > r2._num_frames_faces;
     }
-    bool resultsSortFunc(const FaceDetectResult& r1, const FaceDetectResult& r2) {
+ //   bool resultsSortFunc(const FaceDetectResult& r1, const FaceDetectResult& r2) {
+    bool resultsSortFunc( FaceDetectResult r1,  FaceDetectResult r2) {
       //  cout << "resultsSortFunc in" << endl;
         int d = 0;
         if (d==0)
@@ -569,7 +574,8 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         }
     }
                             
-
+#if SORT_AND_SHOW
+    #define SHOw_RESULTS(r) showOneResult(r)
     void showResults(vector<FaceDetectResult> results) {
         cout << "======================== showResults " << results.size() << " =================================" << endl;
         if (results.size() > 0 ) {
@@ -577,7 +583,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         // Compute ordinals for each image
             sort(results.begin(), results.end(), resultsSortFuncImageName);
             vector<FaceDetectResult>::iterator it, it0 = results.begin();
-        
+        /*
             for (it = results.begin(); it != results.end(); it++) {
                 if ((*it)._image_name.compare((*it0)._image_name) != 0) {
                //     computeResultOrder(results, it0, it);
@@ -591,14 +597,23 @@ const CFIndex CASCADE_NAME_LEN = 2048;
            //     computeResultOrder(results, it0, it);
                 showResultsRange(results, it0, it);
             }
-            
-         //   checkResults(results, "showResults");
-            cout << " sort(results.begin(), results.end(), resultsSortFunc" << endl;
+            */
+        
+            CHECK_RESULTS(results, "showResults");
+            cout << " sort(results.begin(), results.end(), resultsSortFunc)" << endl;
+            int begin_adr = reinterpret_cast<unsigned int>(&(*results.begin()));
+            int end_adr = (unsigned)(&(*results.end()));
+            cout << " results.begin() = " << hex << begin_adr << ", results.end() = " << hex << end_adr << endl;
+            cout << "sizeof(vector<FaceDetectResult>::iterator) = " << sizeof(vector<FaceDetectResult>::iterator) << endl;
+            cout << " ((int)results.end() - (int)results.begin())/sizeof(vector<FaceDetectResult>::iterator) = " << (end_adr - begin_adr)/sizeof(vector<FaceDetectResult>::iterator)
+                << " results.size() = " << results.size()  << endl;
             sort(results.begin(), results.end(), resultsSortFunc);
             showResultsRange(results, results.begin(), results.end());          
          }
     }
-    
+#else      // #if SORT_AND_SHOW
+    #define SHOw_RESULTS(r) 
+#endif     // #if SORT_AND_SHOW
     /*
      * File to be processed
      */
@@ -678,7 +693,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         cout << "=========================================================" << endl;
     //    computeResultOrder(results, results.begin(), results.end());
         
-        showResults(results);
+        SHOw_RESULTS(results);
         return results;
     }
     
@@ -818,7 +833,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
     
     
-}
+//}
 
 
 
@@ -829,13 +844,16 @@ int main (int argc, char * const argv[]) {
     
 //    cin >> response;
  //   cout << "========= " << response << " ===========" << endl;
+    string files_list_name = "files_list.csv";
+    string output_file_name = "results2.csv";
+    
     ParamRanges pr;
     pr._min_neighbors_min = 0;
-    pr._min_neighbors_max = 2;
+    pr._min_neighbors_max = 3;
     pr._min_neighbors_delta = 1;
     pr._scale_factor_min = 1.05;
-    pr._scale_factor_max = 1.3;
-    pr._scale_factor_delta = 0.05;
+    pr._scale_factor_max = 1.5;
+    pr._scale_factor_delta = 0.01;
     pr._cascades.push_back("haarcascade_frontalface_alt");
     pr._cascades.push_back("haarcascade_frontalface_alt2");
     pr._cascades.push_back("haarcascade_frontalface_alt_tree");
@@ -853,12 +871,12 @@ int main (int argc, char * const argv[]) {
         pr._file_entries.push_back(e[i]);
     }
 #else
-     pr._file_entries = readFileList("files_list.csv") ;
+     pr._file_entries = readFileList(files_list_name) ;
 #endif
 
     vector<FaceDetectResult> results, all_results;
     
-    pr._output_file.open("results.csv");
+    pr._output_file.open(output_file_name.c_str());
     showHeaderFile(pr._output_file);
     
     for (vector<string>::const_iterator it = pr._cascades.begin(); it != pr._cascades.end(); it++) {
@@ -868,12 +886,12 @@ int main (int argc, char * const argv[]) {
         all_results.insert(all_results.end(), results.begin(), results.end());
   //      checkResults(all_results, "all_results.insert(all_results.end(), results.begin(), results.end())");
         cout << "---------------- all_results --------------" << endl;
-        showResults(all_results);
+        SHOw_RESULTS(all_results);
     }
     
     pr._output_file.close();
     cout << "================ all_results ==============" << endl;
-    showResults(all_results);
+    SHOw_RESULTS(all_results);
     return 0;
 }
 
