@@ -71,6 +71,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     };
     
     CvRect EMPTY_RECT = { 0, 0, 0, 0 };
+    
     /*
      *   A cropped rect and list of faces detected in that rect
      */
@@ -97,29 +98,29 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             }
             return n;
         }
-        void calConesecutiveWithFaces(int& max_consecutive, CvRect& middle_rect, int& i0, int& i1) const {
+        void calcConsecutiveWithFaces(int& max_consecutive, int& i0, int& i1) const {
             max_consecutive = i0 = i1 = 0;
-            int n = 0;
+            int n = 0, i0x = 0;
             for (int i = 0; i < _frames.size(); i++) {
+                if (n == 0)
+                    i0x = i;
                 n = _frames[i].hasFaces() ? n+1 : 0;
-                max_consecutive = max(max_consecutive, n);
-                if (n==0) i0 = n;
-                if (n!=0) i1 = n;
+                if (n > max_consecutive) {
+                    max_consecutive = n;
+                    i0 = i0x;
+                    i1 = i;
+                }
             }
-            int middle_i = (i0 + i1)/2;
-            middle_rect = _frames[middle_i]._rect;
         }
         int maxConsecutiveWithFaces() const {
             int max_consecutive = 0, i0 = 0, i1 =0;
-            CvRect middle_rect;
-            calConesecutiveWithFaces(max_consecutive, middle_rect, i0, i1)   ;         
+            calcConsecutiveWithFaces(max_consecutive, i0, i1 );         
             return max_consecutive;
         }
         CvRect middleConsecutiveWithFaces() const {
             int max_consecutive = 0, i0 = 0, i1 = 0;
-            CvRect middle_rect;
-            calConesecutiveWithFaces(max_consecutive, middle_rect, i0, i1);            
-            return middle_rect;
+            calcConsecutiveWithFaces(max_consecutive, i0, i1);  
+            return  _frames[(i0 + i1 + 1)/2]._rect;
         }
         int numFalsePositives() const {
             int n = 0;
@@ -131,6 +132,12 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         // !@#$
         CvRect getBestFace() {
             CvRect r = EMPTY_RECT;
+            int max_consecutive = 0, i0 = 0, i1 =0;
+            calcConsecutiveWithFaces(max_consecutive, i0, i1);   
+            if (max_consecutive > 0) {
+                r = _frames[(i0 + i1 + 1)/2]._faces[0];
+            }
+            /*
             int x = 0, y = 0, w = 0, h = 0;
             int n = 0;
             for (int i = 0; i < _frames.size(); i++) {
@@ -152,7 +159,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
                 r.y = y - h/2;
                 r.width = w;
                 r.height = h;
-            }
+            }*/
             return r;
         }
     };
@@ -337,7 +344,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
      *   Create a list of concentric rectangles starting from image border
      */
      CroppedFrameList createMultiFrameList_ConcentricImage(const DetectorState* dp) {
-        double innerFrameFrac = 0.9;
+       // double innerFrameFrac = 0.9;
         int    numFrames = 40;
         CroppedFrameList croppedFrameList;
         croppedFrameList._frames.resize(numFrames);
@@ -345,10 +352,10 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         int imageHeight = dp->_small_image->height;//dp->_current_frame->height;
         CvRect rect;
         for (int i = 0; i < numFrames; i++) { 
-            rect.x = cvRound((1.0 - innerFrameFrac)*imageWidth *(double)i/(double)(numFrames - 1));
-            rect.y = cvRound((1.0 - innerFrameFrac)*imageHeight*(double)i/(double)(numFrames - 1));
-            rect.width  = imageWidth  - 2 * rect.x;
-            rect.height = imageHeight - 2 * rect.y;
+            rect.x = i/2; // cvRound((1.0 - innerFrameFrac)*imageWidth *(double)i/(double)(numFrames - 1));
+            rect.y = i/2; // cvRound((1.0 - innerFrameFrac)*imageHeight*(double)i/(double)(numFrames - 1));
+            rect.width  = imageWidth  - i; // 2 * rect.x;
+            rect.height = imageHeight - i; // 2 * rect.y;
             croppedFrameList._frames[i]._rect = rect;
       //      cout << "rect[" << i << "] = " << rect.x << ", " << rect.y << ", " << rect.width << ", " << rect.height << endl;
         }
@@ -553,16 +560,16 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         of << setw(4) << r._num_frames_total
             <<  sep << setw(4) << r._num_frames_faces
             <<  sep << setw(4) << r._max_consecutive_faces
-            <<  sep << setw(4) << r._num_false_positives
             <<  sep << setw(4) << r._middle_frame_consecutive_faces.x
             <<  sep << setw(4) << r._middle_frame_consecutive_faces.y
             <<  sep << setw(4) << r._middle_frame_consecutive_faces.width
             <<  sep << setw(4) << r._middle_frame_consecutive_faces.height
+            <<  sep << setw(4) << r._num_false_positives
             <<  sep << setw(4) << r._face_rect.x
             <<  sep << setw(4) << r._face_rect.y
             <<  sep << setw(4) << r._face_rect.width
             <<  sep << setw(4) << r._face_rect.height
-            <<  sep << setw(5) << setprecision(3) << r._scale_factor 
+            <<  sep << setw(6) << setprecision(4) << r._scale_factor 
             <<  sep << setw(4) << r._min_neighbors
             <<  sep << setw(20) << r._image_name
             <<  sep << setw(32) << r._cascade_name
@@ -574,15 +581,19 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         of << setw(4) << "frames"
             <<  sep << setw(4) << "with faces"
             <<  sep << setw(4) << "consecutive faces"
+            <<  sep << setw(4) << "best x"
+            <<  sep << setw(4) << "best y"
+            <<  sep << setw(4) << "best w"
+            <<  sep << setw(4) << "best h"
             <<  sep << setw(4) << "false +ves"
-            <<  sep << setw(4) << "x"
-            <<  sep << setw(4) << "y"
-            <<  sep << setw(4) << "width"
-            <<  sep << setw(4) << "height"
-            <<  sep << setw(5) << "scale_factor" 
-            <<  sep << setw(4) << "min_neighbors"
-            <<  sep << setw(20) << "image_name"
-            <<  sep << setw(32) << "cascade_name"
+            <<  sep << setw(4) << "face x"
+            <<  sep << setw(4) << "face y"
+            <<  sep << setw(4) << "face w"
+            <<  sep << setw(4) << "face h"
+            <<  sep << setw(5) << "scale factor" 
+            <<  sep << setw(4) << "min neighbors"
+            <<  sep << setw(20) << "image name"
+            <<  sep << setw(32) << "cascade name"
             << endl;
     }
 
@@ -852,15 +863,15 @@ int main (int argc, char * const argv[]) {
 //    cin >> response;
  //   cout << "========= " << response << " ===========" << endl;
     string files_list_name = "files_list.csv";
-    string output_file_name = "results3.csv";
+    string output_file_name = "results5.csv";
     
     ParamRanges pr;
     pr._min_neighbors_min = 2;
     pr._min_neighbors_max = 3;
     pr._min_neighbors_delta = 1;
-    pr._scale_factor_min = 1.1;
-    pr._scale_factor_max = 1.3;
-    pr._scale_factor_delta = 0.01;
+    pr._scale_factor_min = 1.16;
+    pr._scale_factor_max = 1.23;
+    pr._scale_factor_delta = 0.001;
      pr._cascades.push_back("haarcascade_frontalface_alt2");
 //    pr._cascades.push_back("haarcascade_frontalface_alt");
 //    pr._cascades.push_back("haarcascade_frontalface_alt_tree");
@@ -884,6 +895,7 @@ int main (int argc, char * const argv[]) {
     vector<FaceDetectResult> results, all_results;
     
     pr._output_file.open((test_file_dir + output_file_name).c_str());
+    showHeaderFile(cout);
     showHeaderFile(pr._output_file);
     
     for (vector<string>::const_iterator it = pr._cascades.begin(); it != pr._cascades.end(); it++) {
