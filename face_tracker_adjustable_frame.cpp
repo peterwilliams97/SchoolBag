@@ -83,10 +83,10 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     };
     
     /*
-        A rectangle within which a face was found and 
-        a list of CroppedFrames whose search rects may be based on the
-        face rectangle in some way
-    */
+     *   A rectangle within which a face was found and 
+     *   a list of CroppedFrames whose search rects may be based on the
+     *   face rectangle in some way
+     */
     struct CroppedFrameList {
 	CvRect _primary;		// Starting rectangle main face
 	std::vector<CroppedFrame> _frames;
@@ -97,14 +97,29 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             }
             return n;
         }
-        int maxConsecutiveWithFaces() const {
-            int max_consecutive = 0;
+        void calConesecutiveWithFaces(int& max_consecutive, CvRect& middle_rect, int& i0, int& i1) const {
+            max_consecutive = i0 = i1 = 0;
             int n = 0;
             for (int i = 0; i < _frames.size(); i++) {
                 n = _frames[i].hasFaces() ? n+1 : 0;
                 max_consecutive = max(max_consecutive, n);
+                if (n==0) i0 = n;
+                if (n!=0) i1 = n;
             }
+            int middle_i = (i0 + i1)/2;
+            middle_rect = _frames[middle_i]._rect;
+        }
+        int maxConsecutiveWithFaces() const {
+            int max_consecutive = 0, i0 = 0, i1 =0;
+            CvRect middle_rect;
+            calConesecutiveWithFaces(max_consecutive, middle_rect, i0, i1)   ;         
             return max_consecutive;
+        }
+        CvRect middleConsecutiveWithFaces() const {
+            int max_consecutive = 0, i0 = 0, i1 = 0;
+            CvRect middle_rect;
+            calConesecutiveWithFaces(max_consecutive, middle_rect, i0, i1);            
+            return middle_rect;
         }
         int numFalsePositives() const {
             int n = 0;
@@ -268,7 +283,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
    
     
     /*
-	Pad out a face rectangle to create a search rectangle
+     * Pad out a face rectangle to create a search rectangle
      */
     CvRect getPaddedFace(CvRect face, double xpad, double ypad) {
 	CvRect paddedFace;
@@ -377,7 +392,6 @@ const CFIndex CASCADE_NAME_LEN = 2048;
      *  combination of settings (in dp)
      *  Returns a list of results, one for each frame
      */
-       
     CroppedFrameList  
         processOneImage2(const DetectorState& dp,
 			 const DrawParams& wp) {
@@ -395,6 +409,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         int     _num_frames_total;
         int     _num_frames_faces;
         int     _max_consecutive_faces;
+        CvRect  _middle_frame_consecutive_faces;
         int     _ordinal;
         double  _scale_factor;
         int     _min_neighbors;
@@ -409,13 +424,14 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             _image_name = _cascade_name = "";
             _dbg_index  = -1;
         }
-        FaceDetectResult(int num_faces_total, int num_frames_faces, int max_consecutive_faces, 
+        FaceDetectResult(int num_faces_total, int num_frames_faces, int max_consecutive_faces, CvRect middle_frame_consecutive_faces,
                         double scale_factor, int min_neighbors, 
                             string image_name, string cascade_name, 
                             CvRect face_rect, int num_false_positives) {
             _num_frames_total = num_faces_total;
             _num_frames_faces = num_frames_faces;
             _max_consecutive_faces = max_consecutive_faces;
+            _middle_frame_consecutive_faces = middle_frame_consecutive_faces;
             _scale_factor = scale_factor;
             _min_neighbors = min_neighbors;
             _image_name = image_name;
@@ -432,6 +448,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             _num_frames_total = r._num_frames_total;
             _num_frames_faces = r._num_frames_faces;
             _max_consecutive_faces = r._max_consecutive_faces;
+            _middle_frame_consecutive_faces = r._middle_frame_consecutive_faces;
             _ordinal          = r._ordinal;
             _scale_factor     = r._scale_factor;
             _min_neighbors    = r._min_neighbors;
@@ -448,7 +465,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             return assign(r);
         }
         FaceDetectResult(const FaceDetectResult& r) {
-         cout << "copy ctor " << &r <<  endl;
+        // cout << "copy ctor " << &r <<  endl;
         //   cout << "copy ctor " << r._dbg_index <<  endl;
             assign(r);
         }
@@ -530,13 +547,17 @@ const CFIndex CASCADE_NAME_LEN = 2048;
            
              << endl;
     }
-    void  showOneResultFile(const FaceDetectResult& r, ofstream& of) { 
+    void  showOneResultFile(const FaceDetectResult& r, ostream& of) { 
         const string sep = ", ";
        
         of << setw(4) << r._num_frames_total
             <<  sep << setw(4) << r._num_frames_faces
             <<  sep << setw(4) << r._max_consecutive_faces
             <<  sep << setw(4) << r._num_false_positives
+            <<  sep << setw(4) << r._middle_frame_consecutive_faces.x
+            <<  sep << setw(4) << r._middle_frame_consecutive_faces.y
+            <<  sep << setw(4) << r._middle_frame_consecutive_faces.width
+            <<  sep << setw(4) << r._middle_frame_consecutive_faces.height
             <<  sep << setw(4) << r._face_rect.x
             <<  sep << setw(4) << r._face_rect.y
             <<  sep << setw(4) << r._face_rect.width
@@ -547,7 +568,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             <<  sep << setw(32) << r._cascade_name
             << endl;
     }
-    void  showHeaderFile(ofstream& of) { 
+    void  showHeaderFile(ostream& of) { 
         const string sep = ", ";
        
         of << setw(4) << "frames"
@@ -612,7 +633,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
          }
     }
 #else      // #if SORT_AND_SHOW
-    #define SHOw_RESULTS(r) 
+    #define SHOW_RESULTS(r) 
 #endif     // #if SORT_AND_SHOW
     /*
      * File to be processed
@@ -650,8 +671,7 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         
     };
     
-    
-     
+        
     vector<FaceDetectResult>  
         processOneImage(      DetectorState& dp,
                         const DrawParams& wp,
@@ -662,38 +682,27 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         dp._min_neighbors = min_neighbors;
         CroppedFrameList frameList; // = processOneImage2(dp, wp);
         vector<FaceDetectResult> results;
-        int i = 0;
- 
+      
         for (min_neighbors = pr._min_neighbors_min; min_neighbors <= pr._min_neighbors_max; min_neighbors += pr._min_neighbors_delta) {
             for (scale_factor = pr._scale_factor_min; scale_factor <= pr._scale_factor_max; scale_factor += pr._scale_factor_delta) {
-            //  cout << "******************* Run " << i+1 << " ******************" << endl;
                 dp._scale_factor = scale_factor;
                 dp._min_neighbors = min_neighbors;
                 frameList = processOneImage2(dp, wp);
                 int num_false_positives = frameList.numFalsePositives(); // !@#$ This will be true for the test set of images
-                FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), frameList.maxConsecutiveWithFaces(),
+                FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), frameList.maxConsecutiveWithFaces(), frameList.middleConsecutiveWithFaces(),
                         scale_factor, min_neighbors, 
                         dp._image_name, dp._cascade_name, frameList.getBestFace(), num_false_positives );
                 results.push_back(r);
+                //showOneResult(r);
+                showOneResultFile(r, cout);
                 showOneResultFile(r, pr._output_file);
-                pr.flushIfNecessary();
-       
-               //     cout << "Num frames = " << setw(4)  << frameList._frames.size() << endl;
-                cout << " " << setw(4) << i 
-                        << setw(5) << setprecision(3) << scale_factor 
-                        << setw(4) << min_neighbors
-                        << setw(4) << frameList.numWithFaces()
-                        << setw(4)  << frameList._frames.size()
-                        << endl;
-                }
-            //   cout << "$$$$$$$$$$$$$$$$$$$ Run " << i+1 << " $$$$$$$$$$$$$$$$$$" << endl;
-                ++i;
             }
+        }
        
         cout << "=========================================================" << endl;
     //    computeResultOrder(results, results.begin(), results.end());
         
-        SHOw_RESULTS(results);
+        SHOW_RESULTS(results);
         return results;
     }
     
@@ -794,15 +803,13 @@ const CFIndex CASCADE_NAME_LEN = 2048;
     }
     
     /*
-     *  Read a list of files and settings. Comma separated. One file per line.
-     *
+     *  Read a list of files and settings. Comma separated. One file per line
      */
-     vector<FileEntry> readFileList(const string conf_file_name) {
+     vector<FileEntry> readFileList(const string files_list_path) {
         ifstream input_file;
-        string file_path = test_file_dir + conf_file_name;
-        input_file.open(file_path.c_str(), fstream::in);
+        input_file.open(files_list_path.c_str(), fstream::in);
         if (!input_file.is_open()) {
-            cerr << "Could not open " << conf_file_name << endl;
+            cerr << "Could not open " << files_list_path << endl;
             exit(1);
         }
         vector<FileEntry> file_entries;
@@ -816,13 +823,13 @@ const CFIndex CASCADE_NAME_LEN = 2048;
             string::size_type last_pos = 0;
             string::size_type pos = line.find_first_of(delimiters, last_pos);
             if (pos == string::npos || last_pos == string::npos) {
-                cerr << "Bad line " << n << " in " << conf_file_name << endl;
+                cerr << "Bad line " << n << " in " << files_list_path << endl;
                 exit(2);
             }
             entry._image_name = test_file_dir + trim(line.substr(last_pos, pos - last_pos));
             pos = line.find_first_of(delimiters, last_pos);
             if (pos == string::npos || last_pos == string::npos) {
-                cerr << "Bad line " << n << " in " << conf_file_name << endl;
+                cerr << "Bad line " << n << " in " << files_list_path << endl;
                 exit(3);
             }
             entry._rotation = atof(trim(line.substr(last_pos, pos - last_pos)).c_str());
@@ -845,19 +852,19 @@ int main (int argc, char * const argv[]) {
 //    cin >> response;
  //   cout << "========= " << response << " ===========" << endl;
     string files_list_name = "files_list.csv";
-    string output_file_name = "results2.csv";
+    string output_file_name = "results3.csv";
     
     ParamRanges pr;
-    pr._min_neighbors_min = 0;
+    pr._min_neighbors_min = 2;
     pr._min_neighbors_max = 3;
     pr._min_neighbors_delta = 1;
-    pr._scale_factor_min = 1.05;
-    pr._scale_factor_max = 1.5;
+    pr._scale_factor_min = 1.1;
+    pr._scale_factor_max = 1.3;
     pr._scale_factor_delta = 0.01;
-    pr._cascades.push_back("haarcascade_frontalface_alt");
-    pr._cascades.push_back("haarcascade_frontalface_alt2");
-    pr._cascades.push_back("haarcascade_frontalface_alt_tree");
-    pr._cascades.push_back("haarcascade_frontalface_default");
+     pr._cascades.push_back("haarcascade_frontalface_alt2");
+//    pr._cascades.push_back("haarcascade_frontalface_alt");
+//    pr._cascades.push_back("haarcascade_frontalface_alt_tree");
+ //   pr._cascades.push_back("haarcascade_frontalface_default");
 
 #if 1
     FileEntry e[] = {
@@ -871,12 +878,12 @@ int main (int argc, char * const argv[]) {
         pr._file_entries.push_back(e[i]);
     }
 #else
-     pr._file_entries = readFileList(files_list_name) ;
+     pr._file_entries = readFileList(test_file_dir + files_list_name) ;
 #endif
 
     vector<FaceDetectResult> results, all_results;
     
-    pr._output_file.open(output_file_name.c_str());
+    pr._output_file.open((test_file_dir + output_file_name).c_str());
     showHeaderFile(pr._output_file);
     
     for (vector<string>::const_iterator it = pr._cascades.begin(); it != pr._cascades.end(); it++) {
@@ -886,12 +893,12 @@ int main (int argc, char * const argv[]) {
         all_results.insert(all_results.end(), results.begin(), results.end());
   //      checkResults(all_results, "all_results.insert(all_results.end(), results.begin(), results.end())");
         cout << "---------------- all_results --------------" << endl;
-        SHOw_RESULTS(all_results);
+        SHOW_RESULTS(all_results);
     }
     
     pr._output_file.close();
     cout << "================ all_results ==============" << endl;
-    SHOw_RESULTS(all_results);
+    SHOW_RESULTS(all_results);
     return 0;
 }
 
