@@ -651,7 +651,10 @@ const CFIndex CASCADE_NAME_LEN = 2048;
      */
     struct FileEntry {
         string _image_name;
-        double _rotation;
+        double _rotation;  // Uses Trux's convention - Face found with this rotation in degrees
+        double getStraighteningAngle() const {
+            return -(360.0 - _rotation)/180.0 * M_PI;
+        }
     };
     
     /*
@@ -717,20 +720,48 @@ const CFIndex CASCADE_NAME_LEN = 2048;
         return results;
     }
     
+    IplImage*  rotateImage(IplImage* image, double angle)   {
+        CvPoint px1 = cvPoint(0, image->height/2);
+        CvPoint px2 = cvPoint(image->width, image->height/2);
+        CvPoint py1 = cvPoint(image->width/2, 0);
+        CvPoint py2 = cvPoint(image->width/2, image->height);
+        cvLine(image, px1, px2, CV_RGB(255,255,255), 3, 8, 0);
+        cvLine(image, py1, py2, CV_RGB(255,255,255), 3, 8, 0);
+        
+	CvMat* rot_mat = cvCreateMat(2,3,CV_32FC1);
+        double scale = 1.0;
+        IplImage* dest_image = cvCloneImage(image);
+	dest_image->origin = image->origin;
+	cvZero(dest_image);
+
+        // Compute rotation matrix
+        CvPoint2D32f center = cvPoint2D32f( image->width/2, image->height/2 );
+        cv2DRotationMatrix(center, angle, scale, rot_mat);
+
+        // Do the transformation
+        cvWarpAffine(image, dest_image, rot_mat);
+	cvReleaseImage(&image);
+	cvReleaseMat( &rot_mat );
+	return dest_image;
+    }
+
+
     vector<FaceDetectResult> 
         detectInOneImage(DetectorState& dp,
                    const ParamRanges& pr,
                    const FileEntry& entry) {
         const int scale = 2;
-         
         DrawParams wp;
+          
       
         dp._image_name = entry._image_name;
-        dp._current_frame = cvLoadImage(dp._image_name.c_str());
-        if (!dp._current_frame) {
+        IplImage*  image  = cvLoadImage(dp._image_name.c_str());
+        if (!image) {
             cerr << "Could not find " << dp._image_name << endl;
             abort();
         }
+      //  dp._current_frame = image;
+        dp._current_frame = rotateImage(image, entry.getStraighteningAngle());
         dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
         dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
         wp._draw_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 3);
@@ -877,7 +908,7 @@ int main (int argc, char * const argv[]) {
 //    pr._cascades.push_back("haarcascade_frontalface_alt_tree");
  //   pr._cascades.push_back("haarcascade_frontalface_default");
 
-#if 1
+#if 0
     FileEntry e[] = {
         {"brad-profile-1.jpg",  0.0},
         {"brad-profile-2.jpg",  0.0},
