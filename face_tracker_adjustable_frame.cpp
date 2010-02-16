@@ -11,13 +11,30 @@ using namespace std;
 //#define sort !@#$
 #define SORT_AND_SHOW 0
 
-//namespace  {
+
     
 const char  * WINDOW_NAME  = "Face Tracker with Sub-Frames";
 const CFIndex CASCADE_NAME_LEN = 2048;
   char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
   string  test_file_dir = "/Users/user/Desktop/percipo_pics/";
 
+
+
+/*
+ * File to be processed
+ */
+struct FileEntry {
+    string _image_name;
+    double _rotation;           // Uses Trux's convention - Face found with this rotation in degrees
+    int    _pad;                // In pixels
+    FileEntry() {
+        _rotation = 0.0;
+        _pad = 0;
+    }
+    double getStraighteningAngle() const {
+        return -(360.0 - _rotation)/180.0 * M_PI;
+    }
+};
 
 /* 
  *  All the members of DetectorState are needed for a cvHaarDetectObjects() call
@@ -31,8 +48,7 @@ struct DetectorState {
   // Params  
     double          _scale_factor;  // =1.1, 
     int             _min_neighbors; // =3, 
-    string          _image_name;
-    int             _pad;
+    FileEntry       _entry;
     string          _cascade_name;
 };
 
@@ -421,21 +437,20 @@ struct FaceDetectResult {
     int     _ordinal;
     double  _scale_factor;
     int     _min_neighbors;
-    string  _image_name;
+    FileEntry  _entry;
     string  _cascade_name;
-    int     _pad;
     CvRect  _face_rect;
     int     _num_false_positives;
     int     _dbg_index;
     
     FaceDetectResult() {
  //       cout << "FaceDetectResult::FaceDetectResult()" << endl;
-        _image_name = _cascade_name = "";
+        _entry._image_name = _cascade_name = "";
         _dbg_index  = -1;
     }
     FaceDetectResult(int num_faces_total, int num_frames_faces, int max_consecutive_faces, CvRect middle_frame_consecutive_faces,
                     double scale_factor, int min_neighbors, 
-                        string image_name, int pad, string cascade_name, 
+                       const FileEntry& entry, string cascade_name, 
                         CvRect face_rect, int num_false_positives) {
         _num_frames_total = num_faces_total;
         _num_frames_faces = num_frames_faces;
@@ -443,8 +458,7 @@ struct FaceDetectResult {
         _middle_frame_consecutive_faces = middle_frame_consecutive_faces;
         _scale_factor = scale_factor;
         _min_neighbors = min_neighbors;
-        _image_name = image_name;
-        _pad = pad;
+        _entry = entry;
         _cascade_name = cascade_name;
         _ordinal = -1;
         _face_rect = face_rect;
@@ -462,8 +476,7 @@ struct FaceDetectResult {
         _ordinal          = r._ordinal;
         _scale_factor     = r._scale_factor;
         _min_neighbors    = r._min_neighbors;
-        _image_name       = r._image_name;
-        _pad              = r._pad;
+        _entry            = r._entry;
         _cascade_name     = r._cascade_name;
         _face_rect        = r._face_rect;
         _num_false_positives = r._num_false_positives;
@@ -490,14 +503,14 @@ void checkResults( vector<FaceDetectResult> results, const string title) {
     for (rit = results.begin(); rit != results.end(); rit++) {
         ++i;
         (*rit)._dbg_index = i;
-         cout << (*rit)._dbg_index << ": " << (*rit)._image_name << ", ";
+         cout << (*rit)._dbg_index << ": " << (*rit)._entry._image_name << ", ";
     }
     cout << endl;
 }
 #define CHECK_RESULTS(r, t) checkResults(r, t)
 
 bool resultsSortFuncImageName(const FaceDetectResult& r1, const FaceDetectResult& r2) {
-    return (r1._image_name.compare(r2._image_name) > 0);
+    return (r1._entry._image_name.compare(r2._entry._image_name) > 0);
 }
 bool resultsSortFuncOrder(const FaceDetectResult& r1, const FaceDetectResult& r2) {
     return r1._num_frames_faces > r2._num_frames_faces;
@@ -515,7 +528,7 @@ bool resultsSortFunc( FaceDetectResult r1,  FaceDetectResult r2) {
     if (d==0)
         d = r1._num_frames_faces - r2._num_frames_faces;
     if (d==0)
-        d = r1._image_name.compare(r2._image_name);
+        d = r1._entry._image_name.compare(r2._entry._image_name);
     if (d==0)
         d = r1._cascade_name.compare(r2._cascade_name);
     if (d==0)
@@ -543,21 +556,7 @@ void computeResultOrder(vector<FaceDetectResult>& results,
     }
 }
 */
-void  showOneResult(const FaceDetectResult& r) { 
-    cout << setw(4) << r._num_frames_total
-        << setw(4) << r._ordinal
-        << setw(4) << r._num_frames_faces
-        
-         << "  "  << setw(4) << r._num_false_positives
-        << "  "  << setw(10) << rectAsString(r._face_rect)
 
-        << setw(5) << setprecision(3) << r._scale_factor 
-        << setw(4) << r._min_neighbors
-        << " "   << setw(20) << r._image_name
-        << " "   << setw(32) << r._cascade_name
-       
-         << endl;
-}
 void  showOneResultFile(const FaceDetectResult& r, ostream& of) { 
     const string sep = ", ";
    
@@ -575,8 +574,9 @@ void  showOneResultFile(const FaceDetectResult& r, ostream& of) {
         <<  sep << setw(4) << r._face_rect.height
         <<  sep << setw(6) << setprecision(4) << r._scale_factor 
         <<  sep << setw(4) << r._min_neighbors
-        <<  sep << setw(4) << r._pad
-        <<  sep << setw(20) << r._image_name
+        <<  sep << setw(4) << r._entry._pad
+        <<  sep << setw(4) << r._entry._rotation
+        <<  sep << setw(20) << r._entry._image_name
         <<  sep << setw(32) << r._cascade_name
         << endl;
 }
@@ -598,6 +598,7 @@ void  showHeaderFile(ostream& of) {
         <<  sep << setw(5) << "scale factor" 
         <<  sep << setw(4) << "min neighbors"
         <<  sep << setw(4) << "pad"
+        <<  sep << setw(4) << "rotation"
         <<  sep << setw(20) << "image name"
         <<  sep << setw(32) << "cascade name"
         << endl;
@@ -608,7 +609,7 @@ void showResultsRange(vector<FaceDetectResult>& results,
                         vector<FaceDetectResult>::iterator it1) {
     vector<FaceDetectResult>::iterator it;
     for (it = it0; it != it1; it++) {
-        showOneResult(*it);
+        showOneResultFile(*it, cout);
     }
 }
                         
@@ -653,21 +654,6 @@ void showResults(vector<FaceDetectResult> results) {
 #define SHOW_RESULTS(r) 
 #endif     // #if SORT_AND_SHOW
 
-/*
- * File to be processed
- */
-struct FileEntry {
-    string _image_name;
-    double _rotation;           // Uses Trux's convention - Face found with this rotation in degrees
-    int    _pad;                // In pixels
-    FileEntry() {
-        _rotation = 0.0;
-        _pad = 0;
-    }
-    double getStraighteningAngle() const {
-        return -(360.0 - _rotation)/180.0 * M_PI;
-    }
-};
 
 /*
  *  Ranges of inputs to the program
@@ -717,7 +703,7 @@ vector<FaceDetectResult>
             int num_false_positives = frameList.numFalsePositives(); // !@#$ This will be true for the test set of images
             FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), frameList.maxConsecutiveWithFaces(), frameList.middleConsecutiveWithFaces(),
                     scale_factor, min_neighbors, 
-                    dp._image_name, dp._pad, dp._cascade_name, 
+                    dp._entry, dp._cascade_name, 
                     frameList.getBestFace(), num_false_positives );
             results.push_back(r);
             //showOneResult(r);
@@ -799,11 +785,11 @@ vector<FaceDetectResult>
     const int scale = 2;
     DrawParams wp;
       
-    dp._image_name = entry._image_name;
-    dp._pad = entry._pad;
-    IplImage*  image  = cvLoadImage(dp._image_name.c_str());
+    dp._entry = entry;
+   
+    IplImage*  image  = cvLoadImage(dp._entry._image_name.c_str());
     if (!image) {
-        cerr << "Could not find " << dp._image_name << endl;
+        cerr << "Could not find " << dp._entry._image_name << endl;
         abort();
     }
     IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle());  
@@ -907,7 +893,7 @@ string trim(const string& in) {
         FileEntry entry;
         line = trim(line);
         if (line.size() == 0)
-            break;
+            continue;
         string::size_type last_pos = 0;
         string::size_type pos = line.find_first_of(delimiters, last_pos);
         if (pos == string::npos || last_pos == string::npos) {
@@ -915,13 +901,21 @@ string trim(const string& in) {
             exit(2);
         }
         entry._image_name = test_file_dir + trim(line.substr(last_pos, pos - last_pos));
+        last_pos = line.find_first_not_of(delimiters, pos);
         pos = line.find_first_of(delimiters, last_pos);
-        if (pos == string::npos || last_pos == string::npos) {
+        if ( last_pos == string::npos) {
             cerr << "Bad line " << n << " in " << files_list_path << endl;
             exit(3);
         }
+    /*    string s = line.substr(last_pos, pos - last_pos);
+        string s2 = trim(s);
+        const char*  s3 = s2.c_str();
+        double f = atof(s3);
+        */
         entry._rotation = atof(trim(line.substr(last_pos, pos - last_pos)).c_str());
         file_entries.push_back(entry);
+        cout <<  entry._image_name << " , " << entry._rotation << endl;
+
     }
     input_file.close();
     return file_entries;
@@ -970,11 +964,20 @@ int main (int argc, char * const argv[]) {
      file_entries = readFileList(test_file_dir + files_list_name) ;
 #endif
     int num_pads = 3;
-    pr._file_entries =  vector<FileEntry> (file_entries.size() * num_pads);
+    pr._file_entries =  vector<FileEntry> (file_entries.size() * num_pads * 2);
     for (int i = 0; i < file_entries.size(); i++) {
+        cout <<  file_entries[i]._image_name << " , " << file_entries[i]._rotation << endl;
         for (int j = 0; j < num_pads; j++) {
-            pr._file_entries[num_pads*i + j] = file_entries[i];
-             pr._file_entries[num_pads*i + j]._pad = j;
+            int k = num_pads*i + j;
+            pr._file_entries[2*k] = file_entries[i];
+            pr._file_entries[2*k]._pad = j;
+            pr._file_entries[2*k+1] = file_entries[i];
+            pr._file_entries[2*k+1]._pad = j;
+            pr._file_entries[2*k+1]._rotation = 0.0;
+          
+           // FileEntry e =  pr._file_entries[num_pads*i + j];
+           // FileEntry f =  file_entries[i];
+          /// j = j;
         }
     }
 
