@@ -5,36 +5,16 @@
 #include <fstream>
 #include <iomanip>
 #include <algorithm>
+#include "../FaceMarker/face_io.h"
 
 using namespace std;
 
-//#define sort !@#$
 #define SORT_AND_SHOW 0
 
-
-    
 const char  * WINDOW_NAME  = "Face Tracker with Sub-Frames";
 const CFIndex CASCADE_NAME_LEN = 2048;
-  char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
-  string  test_file_dir = "/Users/user/Desktop/percipo_pics/";
+char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
 
-
-
-/*
- * File to be processed
- */
-struct FileEntry {
-    string _image_name;
-    double _rotation;           // Uses Trux's convention - Face found with this rotation in degrees
-    int    _pad;                // In pixels
-    FileEntry() {
-        _rotation = 0.0;
-        _pad = 0;
-    }
-    double getStraighteningAngle() const {
-        return -(360.0 - _rotation)/180.0 * M_PI;
-    }
-};
 
 /* 
  *  All the members of DetectorState are needed for a cvHaarDetectObjects() call
@@ -301,7 +281,9 @@ bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
     for (int j = 0; j < face_list.size(); j++) {
         face_list[j] = *((CvRect*) cvGetSeqElem (faces, j));
     }
-    sort(face_list.begin(), face_list.end(), SortFacesByArea);
+    cout << "face_list.size() = " << face_list.size() << endl;
+    if (face_list.size() > 1) 
+        sort(face_list.begin(), face_list.end(), SortFacesByArea);
     return face_list;
 }
 
@@ -424,7 +406,12 @@ CroppedFrameList
     
     // draw faces
     cvFlip (dp._current_frame, wp._draw_image, 1);
+    
+    drawRect(&wp, frameList.middleConsecutiveWithFaces(), CV_RGB(0,0,255));
+    drawRect(&wp, frameList.getBestFace(), CV_RGB(255,255,0));
+
     cvShowImage (WINDOW_NAME, wp._draw_image); 
+    cvWaitKey(1000);
     
     return frameList;
 }
@@ -706,9 +693,10 @@ vector<FaceDetectResult>
                     dp._entry, dp._cascade_name, 
                     frameList.getBestFace(), num_false_positives );
             results.push_back(r);
-            //showOneResult(r);
+          
             showOneResultFile(r, cout);
             showOneResultFile(r, pr._output_file);
+           
         }
     }
    
@@ -719,63 +707,6 @@ vector<FaceDetectResult>
     return results;
 }
 
-static IplImage*  rotateImage(IplImage* image, double angle)   {
-#if 0
-    CvPoint px1 = cvPoint(0, image->height/2);
-    CvPoint px2 = cvPoint(image->width, image->height/2);
-    CvPoint py1 = cvPoint(image->width/2, 0);
-    CvPoint py2 = cvPoint(image->width/2, image->height);
-    cvLine(image, px1, px2, CV_RGB(255,255,255), 3, 8, 0);
-    cvLine(image, py1, py2, CV_RGB(255,255,255), 3, 8, 0);
-#endif    
-    IplImage* dest_image = cvCloneImage(image);
-    cvZero(dest_image);
-    dest_image->origin = image->origin;
-
-    CvMat* rot_mat = cvCreateMat(2,3,CV_32FC1);
-    double scale = 1.0;
-
-    // Compute rotation matrix
-    CvPoint2D32f center = cvPoint2D32f( image->width/2, image->height/2 );
-    cv2DRotationMatrix(center, angle, scale, rot_mat);
-
-    // Do the transformation
-    cvWarpAffine(image, dest_image, rot_mat, CV_WARP_FILL_OUTLIERS, CV_RGB(0,0,0));
-    cvReleaseImage(&image);
-    cvReleaseMat(&rot_mat);
-    return dest_image;
-}
-
-
-static IplImage*  resizeImage(IplImage* image, int x_pels, int y_pels)   {
-#if 0
-    CvPoint px1 = cvPoint(0, image->height/2);
-    CvPoint px2 = cvPoint(image->width, image->height/2);
-    CvPoint py1 = cvPoint(image->width/2, 0);
-    CvPoint py2 = cvPoint(image->width/2, image->height);
-    CvPoint p1 = cvPoint(0,0);
-    CvPoint p2 = cvPoint(image->width, image->height);
-    cvLine(image, px1, px2, CV_RGB(255,255,0), 3, 8, 0);
-    cvLine(image, py1, py2, CV_RGB(255,255,0), 3, 8, 0);
- //   cvRectangle(image, p1, p2, CV_RGB(255,255,0), 3, 8, 0);
-#endif  
-    IplImage* dest_image = cvCreateImage(cvSize (image->width + 2*x_pels, image->height + 2*y_pels), IPL_DEPTH_8U, 3);
-    cvZero(dest_image);
-
-    CvMat* rot_mat = cvCreateMat(2,3,CV_32FC1);
-    cvmSet(rot_mat, 0, 0, 1.0);
-    cvmSet(rot_mat, 0, 1, 0.0);
-    cvmSet(rot_mat, 1, 0, 0.0);
-    cvmSet(rot_mat, 1, 1, 1.0);
-    cvmSet(rot_mat, 0, 2, (double)x_pels);
-    cvmSet(rot_mat, 1, 2, (double)x_pels);
-
-    // Do the transformation
-    cvWarpAffine(image, dest_image, rot_mat, CV_WARP_FILL_OUTLIERS, CV_RGB(0,0,0));
-    cvReleaseImage(&image);
-    cvReleaseMat(&rot_mat);
-    return dest_image;
-}
 
 
 vector<FaceDetectResult> 
@@ -801,11 +732,9 @@ vector<FaceDetectResult>
     
     wp._scale = scale;
     wp._small_image_width = dp._small_image->width;
-    
+
     vector<FaceDetectResult>  results = processOneImage(dp, wp, pr) ;
-        // wait a tenth of a second for keypress and window drawing
-    cvWaitKey (10);
-   
+  
     cvReleaseImage(&dp._current_frame); 
     cvReleaseImage(&dp._gray_image);
     cvReleaseImage(&dp._small_image);
@@ -847,8 +776,10 @@ vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascad
 
     vector<FaceDetectResult>  all_results;
     for (vector<FileEntry>::const_iterator it = pr._file_entries.begin(); it != pr._file_entries.end(); it++) {
-        cout << "--------------------- " << (*it)._image_name << " -----------------" << endl;
-        vector<FaceDetectResult>  results = detectInOneImage(dp, pr, *it) ;   
+        FileEntry e = *it;
+        e._image_name = test_file_dir + e._image_name;
+        cout << "--------------------- " << e._image_name << " -----------------" << endl;
+        vector<FaceDetectResult>  results = detectInOneImage(dp, pr, e) ;   
         all_results.insert(all_results.end(), results.begin(), results.end());
     }
     
@@ -857,67 +788,6 @@ vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascad
     
     return all_results;
 }
-
-void startup() {
-    char cwd[200];
-    getcwd(cwd, 200);
-    cout << "cwd is " << cwd << endl;
-}
-
-string trim(const string& in) {
-    string out = "";
-    string whitespace = " \t\r\n";
-    int p2 = in.find_last_not_of(whitespace);
-    if (p2 != string::npos) {
-        int p1 = in.find_first_not_of(whitespace);
-        if (p1 == string::npos) p1 = 0;
-        out = in.substr(p1, (p2-p1)+1);
-    }
-    return out;
-}
-
-/*
- *  Read a list of files and settings. Comma separated. One file per line
- */
- vector<FileEntry> readFileList(const string files_list_path) {
-    ifstream input_file;
-    input_file.open(files_list_path.c_str(), fstream::in);
-    if (!input_file.is_open()) {
-        cerr << "Could not open " << files_list_path << endl;
-        exit(1);
-    }
-    vector<FileEntry> file_entries;
-    int n = 1;
-    string line, delimiters = ",";
-    while (getline(input_file, line)) {
-        FileEntry entry;
-        line = trim(line);
-        if (line.size() == 0)
-            continue;
-        string::size_type last_pos = 0;
-        string::size_type pos = line.find_first_of(delimiters, last_pos);
-        if (pos == string::npos || last_pos == string::npos) {
-            cerr << "Bad line " << n << " in " << files_list_path << endl;
-            exit(2);
-        }
-        entry._image_name = test_file_dir + trim(line.substr(last_pos, pos - last_pos));
-        last_pos = line.find_first_not_of(delimiters, pos);
-        pos = line.find_first_of(delimiters, last_pos);
-        if ( last_pos == string::npos) {
-            cerr << "Bad line " << n << " in " << files_list_path << endl;
-            exit(3);
-        }
-    
-        entry._rotation = atof(trim(line.substr(last_pos, pos - last_pos)).c_str());
-        file_entries.push_back(entry);
-        cout <<  entry._image_name << " , " << entry._rotation << endl;
-
-    }
-    input_file.close();
-    return file_entries;
-}
-
-    
 
 
 
@@ -930,13 +800,13 @@ int main (int argc, char * const argv[]) {
 //    cin >> response;
  //   cout << "========= " << response << " ===========" << endl;
     string files_list_name = "files_list.csv";
-    string output_file_name = "results7.csv";
+    string output_file_name = "results8.csv";
     
     ParamRanges pr;
-    pr._min_neighbors_min = 2;
+    pr._min_neighbors_min = 3; // 2;
     pr._min_neighbors_max = 3;
     pr._min_neighbors_delta = 1;
-    pr._scale_factor_min = 1.18;  // False positives start below here
+    pr._scale_factor_min = 1.2; // 1.18;  // False positives start below here
     pr._scale_factor_max = 1.23;
     pr._scale_factor_delta = 0.01;
      pr._cascades.push_back("haarcascade_frontalface_alt2");
@@ -959,6 +829,9 @@ int main (int argc, char * const argv[]) {
 #else
      file_entries = readFileList(test_file_dir + files_list_name) ;
 #endif
+#if 1
+    pr._file_entries = file_entries;
+#else
     int num_pads = 3;
     pr._file_entries =  vector<FileEntry> (file_entries.size() * num_pads * 2);
     for (int i = 0; i < file_entries.size(); i++) {
@@ -976,7 +849,7 @@ int main (int argc, char * const argv[]) {
           /// j = j;
         }
     }
-
+#endif
     vector<FaceDetectResult> results, all_results;
     
     pr._output_file.open((test_file_dir + output_file_name).c_str());
