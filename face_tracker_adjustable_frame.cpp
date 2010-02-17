@@ -563,13 +563,13 @@ void  showOneResultFile(const FaceDetectResult& r, ostream& of) {
     of << setw(4) << r._num_frames_total
         <<  sep << setw(4) << r._num_frames_faces
         <<  sep << setw(4) << r._max_consecutive_faces
-        <<  sep << setw(4) << r._middle_frame_consecutive_faces.x
-        <<  sep << setw(4) << r._middle_frame_consecutive_faces.y
+        <<  sep << setw(4) << r._middle_frame_consecutive_faces.x - r._entry._pad
+        <<  sep << setw(4) << r._middle_frame_consecutive_faces.y - r._entry._pad
         <<  sep << setw(4) << r._middle_frame_consecutive_faces.width
         <<  sep << setw(4) << r._middle_frame_consecutive_faces.height
         <<  sep << setw(4) << r._num_false_positives
-        <<  sep << setw(4) << r._face_rect.x
-        <<  sep << setw(4) << r._face_rect.y
+        <<  sep << setw(4) << r._face_rect.x - r._entry._pad
+        <<  sep << setw(4) << r._face_rect.y - r._entry._pad
         <<  sep << setw(4) << r._face_rect.width
         <<  sep << setw(4) << r._face_rect.height
         <<  sep << setw(6) << setprecision(4) << r._scale_factor 
@@ -907,11 +907,7 @@ string trim(const string& in) {
             cerr << "Bad line " << n << " in " << files_list_path << endl;
             exit(3);
         }
-    /*    string s = line.substr(last_pos, pos - last_pos);
-        string s2 = trim(s);
-        const char*  s3 = s2.c_str();
-        double f = atof(s3);
-        */
+    
         entry._rotation = atof(trim(line.substr(last_pos, pos - last_pos)).c_str());
         file_entries.push_back(entry);
         cout <<  entry._image_name << " , " << entry._rotation << endl;
@@ -922,7 +918,7 @@ string trim(const string& in) {
 }
 
     
-//}
+
 
 
 
@@ -934,13 +930,13 @@ int main (int argc, char * const argv[]) {
 //    cin >> response;
  //   cout << "========= " << response << " ===========" << endl;
     string files_list_name = "files_list.csv";
-    string output_file_name = "results6.csv";
+    string output_file_name = "results7.csv";
     
     ParamRanges pr;
     pr._min_neighbors_min = 2;
     pr._min_neighbors_max = 3;
     pr._min_neighbors_delta = 1;
-    pr._scale_factor_min = 1.16;
+    pr._scale_factor_min = 1.18;  // False positives start below here
     pr._scale_factor_max = 1.23;
     pr._scale_factor_delta = 0.01;
      pr._cascades.push_back("haarcascade_frontalface_alt2");
