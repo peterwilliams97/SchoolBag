@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <algorithm>
 #include "../FaceMarker/face_io.h"
+#include "../FaceMarker/face_draw.h"
 
 using namespace std;
 
@@ -61,12 +62,13 @@ struct MultiFrameParams {
     }
 };
 
+/*
 struct DrawParams {
     IplImage* _draw_image;
     double	  _scale;
     int	  _small_image_width;
 };
-
+*/
 CvRect EMPTY_RECT = { 0, 0, 0, 0 };
 
 /*
@@ -168,7 +170,7 @@ string rectAsString(CvRect r) {
     return s.str();
 }
 
-
+/*
 int scaleX(const DrawParams* wp, int x) {
     return cvRound((double)(wp->_small_image_width - x) * wp->_scale);
 }
@@ -223,7 +225,7 @@ CvPoint getCenter(CvRect r) {
     c.y = r.y + r.height/2;
     return c;
 }
-
+*/
 /*
  * Draw a set of crop frames onto an image
  */
@@ -234,14 +236,14 @@ void drawCropFrames(const DrawParams* wp, const MultiFrameParams* mp, const Crop
     CvScalar color;
 //	int      diameter = max(5, (frameList->_face.width + frameList->_face.height)/50);	
     
-    drawRect(wp, frameList->_primary, mainColor);
+    drawRect(wp, frameList->_primary, mainColor, false);
    // drawMarker(wp, getCenter(frameList->_face), diameter, mainColor);
     
     for (int i = 0; i < frameList->_frames.size(); i++) {
         CvRect r = frameList->_frames[i]._rect;
-        CvPoint c = getCenter(r);
+     //   CvPoint c = getCenter(r);
         color = frameList->_frames[i].hasFaces() ? onColor : offColor;
-        drawRect(wp, r, color);
+        drawRect(wp, r, color, false);
        // drawMarker(wp, getCenter(r), diameter, color);  
     }
 }
@@ -419,9 +421,9 @@ CroppedFrameList
     // draw faces
     cvFlip (dp._current_frame, wp._draw_image, 1);
     
-    drawCircle(&wp, dp._entry._face_center, dp._entry._face_radius, CV_RGB(255,0,0));
-    drawRect(&wp, frameList.middleConsecutiveWithFaces(), CV_RGB(0,0,255));
-    drawRect(&wp, frameList.getBestFace(), CV_RGB(255,255,0));
+    drawCircle(&wp, dp._entry._face_center, dp._entry._face_radius, CV_RGB(255,0,0), true);
+    drawRect(&wp, frameList.middleConsecutiveWithFaces(), CV_RGB(0,0,255), false);
+    drawRect(&wp, frameList.getBestFace(), CV_RGB(255,255,0), false);
 
     cvShowImage (WINDOW_NAME, wp._draw_image); 
     cvWaitKey(1000);
