@@ -5,8 +5,8 @@
 #include <fstream>
 #include <iomanip>
 #include <algorithm>
-#include "../FaceMarker/face_io.h"
-#include "../FaceMarker/face_draw.h"
+#include "face_io.h"
+#include "face_draw.h"
 
 using namespace std;
 
@@ -295,7 +295,7 @@ bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
     for (int j = 0; j < face_list.size(); j++) {
         face_list[j] = *((CvRect*) cvGetSeqElem (faces, j));
     }
-    cout << "face_list.size() = " << face_list.size() << endl;
+    //cout << "face_list.size() = " << face_list.size() << endl;
     if (face_list.size() > 1) 
         sort(face_list.begin(), face_list.end(), SortFacesByArea);
     return face_list;
