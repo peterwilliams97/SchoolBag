@@ -521,6 +521,9 @@ void  showOneResultFile(const FaceDetectResult& r, ostream& of) {
         <<  sep << setw(6) << setprecision(4) << r._scale_factor 
         <<  sep << setw(4) << r._min_neighbors
         <<  sep << setw(4) << r._entry._pad
+        <<  sep << setw(4) << r._entry._face_center.x
+        <<  sep << setw(4) << r._entry._face_center.y
+        <<  sep << setw(4) << r._entry._face_radius
         <<  sep << setw(4) << r._entry._rotation
         <<  sep << setw(20) << r._entry._image_name
         <<  sep << setw(32) << r._cascade_name
@@ -544,8 +547,12 @@ void  showHeaderFile(ostream& of) {
         <<  sep << setw(5) << "scale factor" 
         <<  sep << setw(4) << "min neighbors"
         <<  sep << setw(4) << "pad"
-        <<  sep << setw(4) << "rotation"
-        <<  sep << setw(20) << "image name"
+        <<  sep << setw(4) << KEY_FACE_CENTER_X
+        <<  sep << setw(4) << KEY_FACE_CENTER_Y
+        <<  sep << setw(4) << KEY_FACE_RADIUS
+        <<  sep << setw(4) << KEY_FACE_ANGLE
+        <<  sep << setw(20) << KEY_IMAGE_NAME
+        
         <<  sep << setw(32) << "cascade name"
         << endl;
 }
