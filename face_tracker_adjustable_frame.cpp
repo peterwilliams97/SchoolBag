@@ -171,62 +171,6 @@ string rectAsString(CvRect r) {
 }
 
 /*
-int scaleX(const DrawParams* wp, int x) {
-    return cvRound((double)(wp->_small_image_width - x) * wp->_scale);
-}
-
-int scaleY(const DrawParams* wp, int y) {
-    return cvRound((double)(y) * wp->_scale);
-}
-
-int scaleR(const DrawParams* wp, int r) {
-    return cvRound((double)(r) * wp->_scale);
-}
-
-void drawRect(const DrawParams* wp, CvRect r, CvScalar color) {
-    CvPoint p1, p2;
-    p1.x = scaleX(wp, r.x);
-    p1.y = scaleY(wp, r.y);
-    p2.x = scaleX(wp, r.x + r.width);
-    p2.y = scaleY(wp, r.y + r.height);
-    cvRectangle(wp->_draw_image, p1, p2, color);
-}
-
-void drawCircle(const DrawParams* wp, CvPoint center, int radius, CvScalar color) {
-    CvPoint c;
-    c.x = scaleX(wp, center.x);
-    c.y = scaleY(wp, center.y);
-    int r = scaleR(wp, radius);
-    cvCircle(wp->_draw_image, c, r, color);
-}
-
-void drawLine(const DrawParams* wp, CvPoint p1in, CvPoint p2in, CvScalar color) {
-    CvPoint p1, p2;
-    p1.x = scaleX(wp, p1in.x);
-    p1.y = scaleY(wp, p1in.y);
-    p2.x = scaleX(wp, p2in.x);
-    p2.y = scaleY(wp, p2in.y);
-    cvLine(wp->_draw_image, p1, p2, color, 3, 8, 0);
-}
-  
-void drawMarker(const DrawParams* wp, CvPoint center, int diameter, CvScalar color) {
-    CvRect r;
-    r.x = center.x - diameter/2;
-    r.y = center.y - diameter/2;
-    r.width = diameter;
-    r.height = diameter;
-    drawRect(wp , r, color);
-}
-
-
-CvPoint getCenter(CvRect r) {
-    CvPoint c;
-    c.x = r.x + r.width/2;
-    c.y = r.y + r.height/2;
-    return c;
-}
-*/
-/*
  * Draw a set of crop frames onto an image
  */
 void drawCropFrames(const DrawParams* wp, const MultiFrameParams* mp, const CroppedFrameList* frameList) {
