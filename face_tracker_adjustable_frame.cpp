@@ -177,6 +177,10 @@ int scaleY(const DrawParams* wp, int y) {
     return cvRound((double)(y) * wp->_scale);
 }
 
+int scaleR(const DrawParams* wp, int r) {
+    return cvRound((double)(r) * wp->_scale);
+}
+
 void drawRect(const DrawParams* wp, CvRect r, CvScalar color) {
     CvPoint p1, p2;
     p1.x = scaleX(wp, r.x);
@@ -184,6 +188,14 @@ void drawRect(const DrawParams* wp, CvRect r, CvScalar color) {
     p2.x = scaleX(wp, r.x + r.width);
     p2.y = scaleY(wp, r.y + r.height);
     cvRectangle(wp->_draw_image, p1, p2, color);
+}
+
+void drawCircle(const DrawParams* wp, CvPoint center, int radius, CvScalar color) {
+    CvPoint c;
+    c.x = scaleX(wp, center.x);
+    c.y = scaleY(wp, center.y);
+    int r = scaleR(wp, radius);
+    cvCircle(wp->_draw_image, c, r, color);
 }
 
 void drawLine(const DrawParams* wp, CvPoint p1in, CvPoint p2in, CvScalar color) {
@@ -407,6 +419,7 @@ CroppedFrameList
     // draw faces
     cvFlip (dp._current_frame, wp._draw_image, 1);
     
+    drawCircle(&wp, dp._entry._face_center, dp._entry._face_radius, CV_RGB(255,0,0));
     drawRect(&wp, frameList.middleConsecutiveWithFaces(), CV_RGB(0,0,255));
     drawRect(&wp, frameList.getBestFace(), CV_RGB(255,255,0));
 
@@ -799,7 +812,7 @@ int main (int argc, char * const argv[]) {
     
 //    cin >> response;
  //   cout << "========= " << response << " ===========" << endl;
-    string files_list_name = "files_list.csv";
+    string files_list_name = "files_list_verbose.csv";
     string output_file_name = "results8.csv";
     
     ParamRanges pr;
@@ -827,7 +840,7 @@ int main (int argc, char * const argv[]) {
         file_entries.push_back(e[i]);
     }
 #else
-     file_entries = readFileList(test_file_dir + files_list_name) ;
+     file_entries = readFileListVerbose(test_file_dir + files_list_name) ;
 #endif
 #if 1
     pr._file_entries = file_entries;
