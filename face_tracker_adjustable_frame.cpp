@@ -204,6 +204,7 @@ bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
     return r1.width*r1.height > r2.width*r2.height;
 }
 
+#define VANILLA 1
 /*
  *  Detects faces in dp->_current_frame cropped to rect
  *  Detects faces in whole image if rect == 0
@@ -212,24 +213,32 @@ bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
  vector<CvRect> detectFacesCrop(const DetectorState* dp, CvRect* rect)    {
     CvSeq* faces = 0;
     //try { 
+#if !VANILLA    
         if (rect) {
             cvSetImageROI(dp->_current_frame, *rect);
             cvSetImageROI(dp->_gray_image, *rect);
         }
+#endif
         // convert to gray and downsize
         cvCvtColor (dp->_current_frame, dp->_gray_image, CV_BGR2GRAY);
         cvResize (dp->_gray_image,dp->_small_image, CV_INTER_LINEAR);
         
         // detect faces
         faces = cvHaarDetectObjects (dp->_small_image, dp->_cascade, dp->_storage,
+#if !VANILLA
                                     dp->_scale_factor, dp->_min_neighbors, 
-                                    //    1.1, 2, 
+#else                                    
+                                        1.1, 2, 
+#endif                                        
                                                 CV_HAAR_DO_CANNY_PRUNING,
                                             cvSize (30, 30));
+        
+#if !VANILLA       
         if (rect) {
             cvResetImageROI(dp->_current_frame);
             cvResetImageROI(dp->_gray_image);
         }
+#endif       
     //}
     //catch (exception& e) {
     //    cerr << "OpenCV error: " << e.what() << endl;
