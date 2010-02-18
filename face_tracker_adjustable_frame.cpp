@@ -747,6 +747,7 @@ vector<FaceDetectResult>
     
     wp._scale = scale;
     wp._small_image_width = dp._small_image->width;
+    wp._orig_image_width = dp._current_frame->width;
 
     vector<FaceDetectResult>  results = processOneImage(dp, wp, pr) ;
   
