@@ -682,7 +682,7 @@ vector<FaceDetectResult>
         cerr << "Could not find " << dp._entry._image_name << endl;
         abort();
     }
-    IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle());  
+    IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle(), entry._face_center);  
     dp._current_frame = resizeImage(image2, entry._pad, entry._pad);
     dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
     dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
