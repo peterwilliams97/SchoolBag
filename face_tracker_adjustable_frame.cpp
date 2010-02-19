@@ -370,7 +370,7 @@ CroppedFrameList
     // draw faces
     cvFlip (dp._current_frame, wp._draw_image, 1);
     
-    CvRect face_rect = dp._entry.getFaceRect();
+    CvRect face_rect = dp._entry.getFaceRect(FACE_CROP_SCALE);
     CvPoint center = cvPoint(dp._entry._face_center.x - face_rect.x, dp._entry._face_center.y - face_rect.y);
     
     drawCircle(&wp, center, dp._entry._face_radius, CV_RGB(255,0,0), true);
@@ -697,7 +697,7 @@ vector<FaceDetectResult>
         abort();
     }
     IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle(), entry._face_center); 
-    IplImage*  image3 = cropImage(image2, entry.getFaceRect());  
+    IplImage*  image3 = cropImage(image2, entry.getFaceRect(FACE_CROP_SCALE));  
     dp._current_frame = resizeImage(image3, entry._pad, entry._pad);
     dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
     dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
