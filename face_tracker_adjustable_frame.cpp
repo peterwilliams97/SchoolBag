@@ -11,11 +11,13 @@
 using namespace std;
 
 #define SORT_AND_SHOW 0
+#define VANILLA 1
+#define TEST_NO_CROP 0
 
-const char  * WINDOW_NAME  = "Face Tracker with Sub-Frames";
-const CFIndex CASCADE_NAME_LEN = 2048;
-char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
-const int small_image_scale = 2;
+static const char  * WINDOW_NAME  = "Face Tracker with Sub-Frames";
+static const CFIndex CASCADE_NAME_LEN = 2048;
+static char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
+static const int small_image_scale = 2;
 
 
 /* 
@@ -64,7 +66,7 @@ struct MultiFrameParams {
 };
 
 
-CvRect EMPTY_RECT = { 0, 0, 0, 0 };
+
 
 /*
  *   A cropped rect and list of faces detected in that rect
@@ -195,7 +197,7 @@ bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
     return r1.width*r1.height > r2.width*r2.height;
 }
 
-#define VANILLA 1
+
 /*
  *  Detects faces in dp->_current_frame cropped to rect
  *  Detects faces in whole image if rect == 0
@@ -203,7 +205,10 @@ bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
  */
 vector<CvRect> detectFacesCrop(const DetectorState* dp, const CvRect* rect)    {
     CvSeq* faces = 0;
-  
+#if TEST_NO_CROP
+    rect = 0;
+   // cerr << "****************** TEST NO CROP ***************" << endl;
+#endif
 #if !VANILLA    
         if (rect) {
             cvSetImageROI(dp->_current_frame, *rect);
@@ -238,16 +243,19 @@ vector<CvRect> detectFacesCrop(const DetectorState* dp, const CvRect* rect)    {
         }
 #endif   
          
-    
     vector <CvRect> face_list(faces != 0 ? faces->total : 0);
     for (int j = 0; j < face_list.size(); j++) {
         face_list[j] = *((CvRect*) cvGetSeqElem (faces, j));
+        // Scale up to original image size
+        face_list[j].x = cvRound((double)face_list[j].x*(double)dp->_current_frame->width /(double)small_image->width);
+        face_list[j].y = cvRound((double)face_list[j].y*(double)dp->_current_frame->height/(double)small_image->height);
+        face_list[j].width  = cvRound((double)face_list[j].width* (double)dp->_current_frame->width /(double)small_image->width);
+        face_list[j].height = cvRound((double)face_list[j].height*(double)dp->_current_frame->height/(double)small_image->height);
+        // Correct for offset of cropped image in original
         if (rect) {
             face_list[j].x += rect->x;
             face_list[j].y += rect->y;
-         }
-        face_list[j].width  = cvRound((double)face_list[j].width* (double)dp->_current_frame->width /(double)small_image->width);
-        face_list[j].height = cvRound((double)face_list[j].height*(double)dp->_current_frame->height/(double)small_image->height);
+        }
     }
     //cout << "face_list.size() = " << face_list.size() << endl;
     if (face_list.size() > 1) 
@@ -410,6 +418,7 @@ CroppedFrameList
     
     CvRect face_rect = dp._entry.getFaceRect(FACE_CROP_SCALE);
     CvPoint center = cvPoint(dp._entry._face_center.x - face_rect.x, dp._entry._face_center.y - face_rect.y);
+//    CvPoint center_unrotated = getUnrotatedPoint(center, dp._entry._face_angle, center);
     
     drawCircle(&wp, center, dp._entry._face_radius, CV_RGB(255,0,0), true);
     drawRect(&wp, frameList.middleConsecutiveWithFaces(), CV_RGB(0,0,255), false);
@@ -571,7 +580,7 @@ void  showOneResultFile(const FaceDetectResult& r, ostream& of) {
         <<  sep << setw(4) << r._entry._face_center.x
         <<  sep << setw(4) << r._entry._face_center.y
         <<  sep << setw(4) << r._entry._face_radius
-        <<  sep << setw(4) << r._entry._rotation
+        <<  sep << setw(4) << r._entry._face_angle
         <<  sep << setw(20) << r._entry._image_name
         <<  sep << setw(32) << r._cascade_name
         << endl;
@@ -736,11 +745,11 @@ vector<FaceDetectResult>
         abort();
     }
     IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle(), entry._face_center); 
-    IplImage*  image3 = cropImage(image2, entry.getFaceRect(FACE_CROP_SCALE));  
+    IplImage*  image3 = cropImage(image2,  entry.getFaceRect(FACE_CROP_SCALE));  
     dp._current_frame = resizeImage(image3, entry._pad, entry._pad);
   //  dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
   //  dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
-    assert (dp._current_frame /*&& dp._gray_image && wp.//*/);
+    assert (dp._current_frame );
 
     vector<FaceDetectResult>  results = processOneImage(dp, /* wp,*/ pr) ;
   
@@ -848,14 +857,14 @@ int main (int argc, char * const argv[]) {
     int num_pads = 3;
     pr._file_entries =  vector<FileEntry> (file_entries.size() * num_pads * 2);
     for (int i = 0; i < file_entries.size(); i++) {
-        cout <<  file_entries[i]._image_name << " , " << file_entries[i]._rotation << endl;
+        cout <<  file_entries[i]._image_name << " , " << file_entries[i]._face_angle << endl;
         for (int j = 0; j < num_pads; j++) {
             int k = num_pads*i + j;
             pr._file_entries[2*k] = file_entries[i];
             pr._file_entries[2*k]._pad = j;
             pr._file_entries[2*k+1] = file_entries[i];
             pr._file_entries[2*k+1]._pad = j;
-            pr._file_entries[2*k+1]._rotation = 0.0;
+            pr._file_entries[2*k+1]._face_angle = 0.0;
           
            // FileEntry e =  pr._file_entries[num_pads*i + j];
            // FileEntry f =  file_entries[i];
