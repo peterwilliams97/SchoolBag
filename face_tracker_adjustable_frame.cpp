@@ -15,6 +15,7 @@ using namespace std;
 const char  * WINDOW_NAME  = "Face Tracker with Sub-Frames";
 const CFIndex CASCADE_NAME_LEN = 2048;
 char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
+const int small_image_scale = 2;
 
 
 /* 
@@ -22,8 +23,8 @@ char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade
  */
 struct DetectorState {
     IplImage*       _current_frame; 
-    IplImage*       _gray_image; 
-    IplImage*       _small_image;
+  //  IplImage*       _gray_image; 
+  //  IplImage*       _small_image;
     CvHaarClassifierCascade* _cascade;  
     CvMemStorage*   _storage;
   // Params  
@@ -62,13 +63,7 @@ struct MultiFrameParams {
     }
 };
 
-/*
-struct DrawParams {
-    IplImage* _draw_image;
-    double	  _scale;
-    int	  _small_image_width;
-};
-*/
+
 CvRect EMPTY_RECT = { 0, 0, 0, 0 };
 
 /*
@@ -206,21 +201,28 @@ bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
  *  Detects faces in whole image if rect == 0
  *  Returns list of face rectangles sorted by size
  */
- vector<CvRect> detectFacesCrop(const DetectorState* dp, CvRect* rect)    {
+vector<CvRect> detectFacesCrop(const DetectorState* dp, const CvRect* rect)    {
     CvSeq* faces = 0;
-    //try { 
+  
 #if !VANILLA    
         if (rect) {
             cvSetImageROI(dp->_current_frame, *rect);
             cvSetImageROI(dp->_gray_image, *rect);
         }
 #endif
-        // convert to gray and downsize
-        cvCvtColor (dp->_current_frame, dp->_gray_image, CV_BGR2GRAY);
-        cvResize (dp->_gray_image,dp->_small_image, CV_INTER_LINEAR);
+    IplImage* cropped_image = dp->_current_frame;
+    if (rect) 
+        cropped_image = cropImage(dp->_current_frame, *rect);
+    
+    IplImage* gray_image  = cvCreateImage(cvSize(cropped_image->width, cropped_image->height), IPL_DEPTH_8U, 1);
+    IplImage* small_image = cvCreateImage(cvSize(cropped_image->width/small_image_scale, cropped_image->height/small_image_scale), IPL_DEPTH_8U, 1);
+
+    // convert to gray and downsize
+    cvCvtColor (cropped_image, gray_image, CV_BGR2GRAY);
+    cvResize (gray_image, small_image, CV_INTER_LINEAR);
         
         // detect faces
-        faces = cvHaarDetectObjects (dp->_small_image, dp->_cascade, dp->_storage,
+    faces = cvHaarDetectObjects (small_image, dp->_cascade, dp->_storage,
 #if !VANILLA
                                     dp->_scale_factor, dp->_min_neighbors, 
 #else                                    
@@ -234,19 +236,29 @@ bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
             cvResetImageROI(dp->_current_frame);
             cvResetImageROI(dp->_gray_image);
         }
-#endif       
-    //}
-    //catch (exception& e) {
-    //    cerr << "OpenCV error: " << e.what() << endl;
-    //}
+#endif   
+         
     
     vector <CvRect> face_list(faces != 0 ? faces->total : 0);
     for (int j = 0; j < face_list.size(); j++) {
         face_list[j] = *((CvRect*) cvGetSeqElem (faces, j));
+        if (rect) {
+            face_list[j].x += rect->x;
+            face_list[j].y += rect->y;
+         }
+        face_list[j].width  = cvRound((double)face_list[j].width* (double)dp->_current_frame->width /(double)small_image->width);
+        face_list[j].height = cvRound((double)face_list[j].height*(double)dp->_current_frame->height/(double)small_image->height);
     }
     //cout << "face_list.size() = " << face_list.size() << endl;
     if (face_list.size() > 1) 
         sort(face_list.begin(), face_list.end(), SortFacesByArea);
+ 
+    // Free images afer last call to cvGetSeqElem() !
+    if (rect) 
+        cvReleaseImage(&cropped_image); 
+    cvReleaseImage(&gray_image);
+    cvReleaseImage(&small_image);   
+       
     return face_list;
 }
 
@@ -305,6 +317,7 @@ CvRect getPaddedFace(CvRect face, double xpad, double ypad) {
 /*
  *   Create a list of concentric rectangles starting from image border
  */
+/*
  CroppedFrameList createMultiFrameList_ConcentricImage(const DetectorState* dp) {
    // double innerFrameFrac = 0.9;
     int    numFrames = 40;
@@ -324,7 +337,29 @@ CvRect getPaddedFace(CvRect face, double xpad, double ypad) {
     croppedFrameList._primary = croppedFrameList._frames[0]._rect;
     return croppedFrameList;
  }
- 
+*/ 
+
+
+ CroppedFrameList createMultiFrameList_ConcentricImage2(const DetectorState* dp) {
+    int    num_frames = 40;
+    CroppedFrameList cropped_frame_list;
+    cropped_frame_list._frames.resize(num_frames);
+    int image_width  = dp->_current_frame->width;
+    int image_height = dp->_current_frame->height;
+    CvRect rect;
+    for (int i = 0; i < num_frames; i++) { 
+        rect.x = i/2;
+        rect.y = i/2; 
+        rect.width  = image_width  - i; 
+        rect.height = image_height - i; 
+        cropped_frame_list._frames[i]._rect = rect;
+  //      cout << "rect[" << i << "] = " << rect.x << ", " << rect.y << ", " << rect.width << ", " << rect.height << endl;
+    }
+    cropped_frame_list._primary = cropped_frame_list._frames[0]._rect;
+    return cropped_frame_list;
+ }
+
+
 /*
  * Detect faces within a set of frames (ROI rectangles)
  *   croppedFrameList contains the frames at input and recieves the lists of faces for
@@ -350,7 +385,7 @@ vector<CvRect> detectFaces(DetectorState* dp)    {
  */ 
 CroppedFrameList detectFaces2(const DetectorState* dp)    {
     //CroppedFrameList frameList = createMultiFrameList_Cross(mp, face);
-    CroppedFrameList frameList = createMultiFrameList_ConcentricImage(dp);
+    CroppedFrameList frameList = createMultiFrameList_ConcentricImage2(dp);
     detectFacesMultiFrame(dp, &frameList);
     return frameList;
 }
@@ -362,12 +397,15 @@ CroppedFrameList detectFaces2(const DetectorState* dp)    {
  *  Returns a list of results, one for each frame
  */
 CroppedFrameList  
-    processOneImage2(const DetectorState& dp,
-                     const DrawParams& wp) {
-
+    processOneImage2(const DetectorState& dp /*,
+                     const DrawParams& wp */) {
+   
     CroppedFrameList frameList = detectFaces2(&dp);  
     
     // draw faces
+    DrawParams wp;
+    wp._draw_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 3);
+   
     cvFlip (dp._current_frame, wp._draw_image, 1);
     
     CvRect face_rect = dp._entry.getFaceRect(FACE_CROP_SCALE);
@@ -380,6 +418,7 @@ CroppedFrameList
     cvShowImage (WINDOW_NAME, wp._draw_image); 
     cvWaitKey(1000);
     
+    cvReleaseImage(&wp._draw_image);
     return frameList;
 }
 
@@ -647,7 +686,7 @@ struct  ParamRanges {
     
 vector<FaceDetectResult>  
     processOneImage(      DetectorState& dp,
-                    const DrawParams& wp,
+                   // const DrawParams& wp,
                     const ParamRanges& pr) {
     double scale_factor = 1.1;
     int    min_neighbors = 2;
@@ -660,7 +699,7 @@ vector<FaceDetectResult>
         for (scale_factor = pr._scale_factor_min; scale_factor <= pr._scale_factor_max; scale_factor += pr._scale_factor_delta) {
             dp._scale_factor = scale_factor;
             dp._min_neighbors = min_neighbors;
-            frameList = processOneImage2(dp, wp);
+            frameList = processOneImage2(dp);
             int num_false_positives = frameList.numFalsePositives(); // !@#$ This will be true for the test set of images
             FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), frameList.maxConsecutiveWithFaces(), frameList.middleConsecutiveWithFaces(),
                     scale_factor, min_neighbors, 
@@ -686,8 +725,8 @@ vector<FaceDetectResult>
     detectInOneImage(DetectorState& dp,
                const ParamRanges& pr,
                const FileEntry& entry) {
-    const int scale = 2;
-    DrawParams wp;
+  //  const int scale = 2;
+  //  DrawParams wp;
       
     dp._entry = entry;
    
@@ -699,21 +738,18 @@ vector<FaceDetectResult>
     IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle(), entry._face_center); 
     IplImage*  image3 = cropImage(image2, entry.getFaceRect(FACE_CROP_SCALE));  
     dp._current_frame = resizeImage(image3, entry._pad, entry._pad);
-    dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
-    dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
-    wp._draw_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 3);
-    assert (dp._current_frame && dp._gray_image && wp._draw_image);
-    
-    wp._scale = scale;
-    wp._small_image_width = dp._small_image->width;
-    wp._orig_image_width = dp._current_frame->width;
+  //  dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
+  //  dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
+    assert (dp._current_frame /*&& dp._gray_image && wp.//*/);
 
-    vector<FaceDetectResult>  results = processOneImage(dp, wp, pr) ;
+    vector<FaceDetectResult>  results = processOneImage(dp, /* wp,*/ pr) ;
   
     cvReleaseImage(&dp._current_frame); 
-    cvReleaseImage(&dp._gray_image);
-    cvReleaseImage(&dp._small_image);
-    cvReleaseImage(&wp._draw_image);
+    cvReleaseImage(&image2); 
+    cvReleaseImage(&image3); 
+   // cvReleaseImage(&dp._gray_image);
+  //  cvReleaseImage(&dp._small_image);
+   // cvReleaseImage(&wp._draw_image);
     
     return results;
 }
