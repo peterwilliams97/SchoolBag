@@ -370,7 +370,10 @@ CroppedFrameList
     // draw faces
     cvFlip (dp._current_frame, wp._draw_image, 1);
     
-    drawCircle(&wp, dp._entry._face_center, dp._entry._face_radius, CV_RGB(255,0,0), true);
+    CvRect face_rect = dp._entry.getFaceRect();
+    CvPoint center = cvPoint(dp._entry._face_center.x - face_rect.x, dp._entry._face_center.y - face_rect.y);
+    
+    drawCircle(&wp, center, dp._entry._face_radius, CV_RGB(255,0,0), true);
     drawRect(&wp, frameList.middleConsecutiveWithFaces(), CV_RGB(0,0,255), false);
     drawRect(&wp, frameList.getBestFace(), CV_RGB(255,255,0), false);
 
@@ -678,13 +681,6 @@ vector<FaceDetectResult>
     return results;
 }
 
-static CvRect getFaceRect(const FileEntry& entry) {
-    CvRect r;
-    r.x = entry._face_center.x - entry._face_radius;
-    r.y = entry._face_center.y - entry._face_radius;
-    r.width = r.height = entry._face_radius * 2;
-    return r;
-}
 
 vector<FaceDetectResult> 
     detectInOneImage(DetectorState& dp,
@@ -701,7 +697,7 @@ vector<FaceDetectResult>
         abort();
     }
     IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle(), entry._face_center); 
-    IplImage*  image3 = cropImage(image2, getFaceRect(entry));  
+    IplImage*  image3 = cropImage(image2, entry.getFaceRect());  
     dp._current_frame = resizeImage(image3, entry._pad, entry._pad);
     dp._gray_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 1);
     dp._small_image   = cvCreateImage(cvSize (dp._current_frame->width / scale, dp._current_frame->height / scale), IPL_DEPTH_8U, 1);
@@ -774,7 +770,7 @@ vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascad
 int main (int argc, char * const argv[]) {
     startup();
     
-    invertMatTest();
+//    invertMatTest();
     
 //    string response;
     
