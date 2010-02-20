@@ -5,8 +5,10 @@
 #include <fstream>
 #include <iomanip>
 #include <algorithm>
+#include <list>
 #include "face_io.h"
 #include "face_draw.h"
+#include "face_calc.h"
 
 using namespace std;
 
@@ -94,6 +96,14 @@ struct CroppedFrameList {
         }
         return n;
     }
+    vector<CvRect> getFacesFromFrames() const {
+        list <CvRect> faces;
+        for (int i = 0; i < _frames.size(); i++) {
+            if (_frames[i].hasFaces())
+                faces.push_back(_frames[i]._faces[0]);
+        }
+        return vector<CvRect>(faces.begin(), faces.end());
+    }
     void calcConsecutiveWithFaces(int& max_consecutive, int& i0, int& i1) const {
         max_consecutive = i0 = i1 = 0;
         int n = 0, i0x = 0;
@@ -127,6 +137,16 @@ struct CroppedFrameList {
     }
     // !@#$
     CvRect getBestFace() {
+ #if 1   
+        vector<CvRect> faces = getFacesFromFrames();
+        vector<CvPoint> centers = getCenters(faces);
+        CvPoint the_center = findDensestPoint(centers);
+        vector<CvPoint> sizes = getSizes(faces);
+        CvPoint the_size = findDensestPoint(sizes);
+        CvRect the_face = cvRect(the_center.x - the_size.x/2, the_center.y - the_size.y/2, the_size.x, the_size.y);
+        return the_face;
+
+ #else   
         CvRect r = EMPTY_RECT;
         int max_consecutive = 0, i0 = 0, i1 =0;
         calcConsecutiveWithFaces(max_consecutive, i0, i1);   
@@ -157,6 +177,7 @@ struct CroppedFrameList {
             r.height = h;
         }*/
         return r;
+  #endif      
     }
 };
     
@@ -206,7 +227,8 @@ bool SortFacesByArea(const CvRect& r1, const CvRect& r2) {
 vector<CvRect> detectFacesCrop(const DetectorState* dp, const CvRect* rect)    {
     CvSeq* faces = 0;
 #if TEST_NO_CROP
-    rect = 0;
+   // rect = 0;
+   *((CvRect*) rect) = EMPTY_RECT;
    // cerr << "****************** TEST NO CROP ***************" << endl;
 #endif
 #if !VANILLA    
@@ -217,8 +239,8 @@ vector<CvRect> detectFacesCrop(const DetectorState* dp, const CvRect* rect)    {
 #endif
     IplImage* cropped_image = dp->_current_frame;
     if (rect) 
-        cropped_image = cropImage(dp->_current_frame, *rect);
-    
+       cropped_image = cropImage(dp->_current_frame, *rect);
+   // IplImage* cropped_image =  cropImage(dp->_current_frame, *rect);
     IplImage* gray_image  = cvCreateImage(cvSize(cropped_image->width, cropped_image->height), IPL_DEPTH_8U, 1);
     IplImage* small_image = cvCreateImage(cvSize(cropped_image->width/small_image_scale, cropped_image->height/small_image_scale), IPL_DEPTH_8U, 1);
 
