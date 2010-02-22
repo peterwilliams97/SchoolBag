@@ -9,12 +9,14 @@
 #include "face_io.h"
 #include "face_draw.h"
 #include "face_calc.h"
+#include "cropped_frames.h"
 
 using namespace std;
 
 #define SORT_AND_SHOW 0
-#define VANILLA 1
+#define DO_NOT_SET_ROI 1
 #define TEST_NO_CROP 0
+#define ADAPTIVE_FACE_SEARCH 1
 
 static const char  * WINDOW_NAME  = "Face Tracker with Sub-Frames";
 static const CFIndex CASCADE_NAME_LEN = 2048;
@@ -27,8 +29,6 @@ static const int small_image_scale = 2;
  */
 struct DetectorState {
     IplImage*       _current_frame; 
-  //  IplImage*       _gray_image; 
-  //  IplImage*       _small_image;
     CvHaarClassifierCascade* _cascade;  
     CvMemStorage*   _storage;
   // Params  
@@ -69,119 +69,7 @@ struct MultiFrameParams {
 
 
 
-
-/*
- *   A cropped rect and list of faces detected in that rect
- */
-struct CroppedFrame {
-    CvRect          _rect;
-    vector<CvRect>  _faces;
-    CroppedFrame() {   _rect  = EMPTY_RECT;   }
-    bool hasFaces() const { return _faces.size() > 0; }
-    int  numFalsePositives() const { return max(0, (int)_faces.size() - 1); } // !@#$ Based on set of test images with 1 face each !!!
-};
-
-/*
- *   A rectangle within which a face was found and 
- *   a list of CroppedFrames whose search rects may be based on the
- *   face rectangle in some way
- */
-struct CroppedFrameList {
-    CvRect _primary;		// Starting rectangle main face
-    std::vector<CroppedFrame> _frames;
-    int  numWithFaces() const {
-        int n = 0;
-        for (int i = 0; i < _frames.size(); i++) {
-            n += _frames[i].hasFaces() ? 1 : 0;
-        }
-        return n;
-    }
-    vector<CvRect> getFacesFromFrames() const {
-        list <CvRect> faces;
-        for (int i = 0; i < _frames.size(); i++) {
-            if (_frames[i].hasFaces())
-                faces.push_back(_frames[i]._faces[0]);
-        }
-        return vector<CvRect>(faces.begin(), faces.end());
-    }
-    void calcConsecutiveWithFaces(int& max_consecutive, int& i0, int& i1) const {
-        max_consecutive = i0 = i1 = 0;
-        int n = 0, i0x = 0;
-        for (int i = 0; i < _frames.size(); i++) {
-            if (n == 0)
-                i0x = i;
-            n = _frames[i].hasFaces() ? n+1 : 0;
-            if (n > max_consecutive) {
-                max_consecutive = n;
-                i0 = i0x;
-                i1 = i;
-            }
-        }
-    }
-    int maxConsecutiveWithFaces() const {
-        int max_consecutive = 0, i0 = 0, i1 =0;
-        calcConsecutiveWithFaces(max_consecutive, i0, i1 );         
-        return max_consecutive;
-    }
-    CvRect middleConsecutiveWithFaces() const {
-        int max_consecutive = 0, i0 = 0, i1 = 0;
-        calcConsecutiveWithFaces(max_consecutive, i0, i1);  
-        return  _frames[(i0 + i1 + 1)/2]._rect;
-    }
-    int numFalsePositives() const {
-        int n = 0;
-        for (int i = 0; i < _frames.size(); i++) {
-            n += _frames[i].numFalsePositives();
-        }
-        return n; 
-    }
-    // !@#$
-    CvRect getBestFace() {
- #if 1   
-        vector<CvRect> faces = getFacesFromFrames();
-        vector<CvPoint> centers = getCenters(faces);
-        CvPoint the_center = findDensestPoint(centers);
-        vector<CvPoint> sizes = getSizes(faces);
-        CvPoint the_size = findDensestPoint(sizes);
-        CvRect the_face = cvRect(the_center.x - the_size.x/2, the_center.y - the_size.y/2, the_size.x, the_size.y);
-        return the_face;
-
- #else   
-        CvRect r = EMPTY_RECT;
-        int max_consecutive = 0, i0 = 0, i1 =0;
-        calcConsecutiveWithFaces(max_consecutive, i0, i1);   
-        if (max_consecutive > 0) {
-            r = _frames[(i0 + i1 + 1)/2]._faces[0];
-        }
-        /*
-        int x = 0, y = 0, w = 0, h = 0;
-        int n = 0;
-        for (int i = 0; i < _frames.size(); i++) {
-            if (_frames[i].hasFaces()) {
-                r = _frames[i]._faces[0];
-                x += r.x + r.width/2;
-                y += r.y + r.height/2;
-                w += r.width;
-                h += r.height;
-                ++n;
-            }
-        }
-        if (n > 0) {
-            x /= n;
-            y /= n;
-            w /= n;
-            h /= n;
-            r.x = x - w/2;
-            r.y = y - h/2;
-            r.width = w;
-            r.height = h;
-        }*/
-        return r;
-  #endif      
-    }
-};
     
-      
 string rectAsString(CvRect r) {
     ostringstream s;
     s << "[" << setw(3) << r.x << "," << setw(3) << r.y << "," << setw(3) << r.width << "," << setw(3)  << r.height << "]";
@@ -196,17 +84,13 @@ void drawCropFrames(const DrawParams* wp, const MultiFrameParams* mp, const Crop
     CvScalar offColor = CV_RGB(255,0,0);
     CvScalar mainColor = CV_RGB(0,0,255);
     CvScalar color;
-//	int      diameter = max(5, (frameList->_face.width + frameList->_face.height)/50);	
     
     drawRect(wp, frameList->_primary, mainColor, false);
-   // drawMarker(wp, getCenter(frameList->_face), diameter, mainColor);
     
     for (int i = 0; i < frameList->_frames.size(); i++) {
         CvRect r = frameList->_frames[i]._rect;
-     //   CvPoint c = getCenter(r);
         color = frameList->_frames[i].hasFaces() ? onColor : offColor;
         drawRect(wp, r, color, false);
-       // drawMarker(wp, getCenter(r), diameter, color);  
     }
 }
 
@@ -231,7 +115,7 @@ vector<CvRect> detectFacesCrop(const DetectorState* dp, const CvRect* rect)    {
    *((CvRect*) rect) = EMPTY_RECT;
    // cerr << "****************** TEST NO CROP ***************" << endl;
 #endif
-#if !VANILLA    
+#if !DO_NOT_SET_ROI    
         if (rect) {
             cvSetImageROI(dp->_current_frame, *rect);
             cvSetImageROI(dp->_gray_image, *rect);
@@ -250,7 +134,7 @@ vector<CvRect> detectFacesCrop(const DetectorState* dp, const CvRect* rect)    {
         
         // detect faces
     faces = cvHaarDetectObjects (small_image, dp->_cascade, dp->_storage,
-#if !VANILLA
+#if !DO_NOT_SET_ROI
                                     dp->_scale_factor, dp->_min_neighbors, 
 #else                                    
                                         1.1, 2, 
@@ -258,7 +142,7 @@ vector<CvRect> detectFacesCrop(const DetectorState* dp, const CvRect* rect)    {
                                                 CV_HAAR_DO_CANNY_PRUNING,
                                             cvSize (30, 30));
         
-#if !VANILLA       
+#if !DO_NOT_SET_ROI       
         if (rect) {
             cvResetImageROI(dp->_current_frame);
             cvResetImageROI(dp->_gray_image);
@@ -421,6 +305,117 @@ CroppedFrameList detectFaces2(const DetectorState* dp)    {
 }
 
 
+
+/*  
+ *   Detect faces in an image and a set of frame starting from middle
+ - start from the origianal frame given to you
+- enlarge the frame by some factor, say 1.1x the radius
+- detect face
+- slide to the left till you don't find any more faces
+- slide to the right till you don't find any more faces
+- do the same thing horizontally
+- find the mid point of the above ranges
+- consider this point your median face center (now we need to find a good, stable radius)
+*- enlarge the frame and detect face
+- repeat while face center falls within some tolerance of the original face center till failure
+- then reduce the frame from *-
+- use the mid point of these as the stable face radius
+ */ 
+  
+CvRect detectFacesCenterAdaptive(const DetectorState* dp)    {
+    //CroppedFrameList frameList = createMultiFrameList_Cross(mp, face);
+    CroppedFrameList frameList;
+    double frame_to_original = 1.6;
+    double frame_growth = 1.1;
+    int    num_steps = 11;
+    int image_width  = dp->_current_frame->width;
+    int image_height = dp->_current_frame->height;
+    CvRect base_rect = scaleRectConcentric(cvRect(0,0,image_width,image_height), frame_to_original/FACE_CROP_SCALE); 
+    CvRect rect = base_rect;
+    CvRect final_rect = EMPTY_RECT;
+    
+    int dx = (image_width - rect.width)/num_steps;
+    int dy = (image_height - rect.height)/num_steps;
+    int mid_ix = -1, mid_iy = -1;
+    int min_i = -1, max_i = -1;
+    vector<CroppedFrame> frameSpanX(num_steps);
+    for (int i = num_steps/2; i >= 0; i--) {
+        CvRect rect = cvRect(base_rect.x + i*dx, base_rect.y, base_rect.width, base_rect.height);
+        vector<CvRect> faces = detectFacesCrop(dp, &rect);
+        if (faces.size() == 0)
+            break;
+        CroppedFrame frame(rect, faces);
+        frameSpanX[i] = frame;
+        min_i = i;
+        if (max_i < 0)
+            max_i = i;
+    }
+    for (int i = num_steps/2 + 1; i < num_steps; i++) {
+       CvRect rect = cvRect(base_rect.x + i*dx, base_rect.y, base_rect.width, base_rect.height);
+        vector<CvRect> faces = detectFacesCrop(dp, &rect);
+        if (faces.size() == 0)
+            break;
+        CroppedFrame frame(rect, faces);
+        frameSpanX[i] = frame;
+        max_i = i;
+        if (min_i < 0)
+            min_i = i;
+    }
+    if (min_i >= 0 && max_i >= 0)
+        mid_ix = (min_i + max_i)/2; 
+    
+    min_i = -1, max_i = -1;
+    vector<CroppedFrame> frameSpanY(num_steps);
+    for (int i = num_steps/2; i >= 0; i--) {
+        CvRect rect = cvRect(base_rect.x, base_rect.y + i*dy, base_rect.width, base_rect.height);
+        vector<CvRect> faces = detectFacesCrop(dp, &rect);
+        if (faces.size() == 0)
+            break;
+        CroppedFrame frame(rect, faces);
+        frameSpanY[i] = frame;
+        min_i = i;
+        if (max_i < 0)
+            max_i = i;
+    }
+    for (int i = num_steps/2 + 1; i < num_steps; i++) {
+        CvRect rect = cvRect(base_rect.x, base_rect.y + i*dy, base_rect.width, base_rect.height);
+        vector<CvRect> faces = detectFacesCrop(dp, &rect);
+        if (faces.size() == 0)
+            break;
+        CroppedFrame frame(rect, faces);
+        frameSpanY[i] = frame;
+        max_i = i;
+        if (min_i < 0)
+            min_i = i;
+    }
+    if (min_i >= 0 && max_i >= 0)
+        mid_iy = (min_i + max_i)/2; 
+   
+    CvPoint center;
+    
+    if (mid_ix > 0 && mid_iy > 0) {
+        center.x = getCenter(frameSpanX[mid_ix]._rect).x;
+        center.y = getCenter(frameSpanY[mid_iy]._rect).y;
+        final_rect = cvRect(center.x - rect.width/2, center.y - rect.height/2, rect.width, rect.height);
+    }
+        
+ 
+  
+    return final_rect;
+}
+
+
+
+
+static void drawCroppedFrame(const void* ptr, const CroppedFrame& frame) {
+    const DrawParams* wp = (const DrawParams*)ptr;
+    drawRect(wp, frame._rect, CV_RGB(0,255,255), false);
+    if (frame._faces.size() > 0) {
+        drawRect(wp, frame._faces[0], CV_RGB(255,255,255), false);
+    }
+}
+
+#define SHOW_ALL_RECTANGLEsS 1
 /*
  *  Process (detect faces) in set of frames within an image with a particular
  *  combination of settings (in dp)
@@ -440,17 +435,58 @@ CroppedFrameList
     
     CvRect face_rect = dp._entry.getFaceRect(FACE_CROP_SCALE);
     CvPoint center = cvPoint(dp._entry._face_center.x - face_rect.x, dp._entry._face_center.y - face_rect.y);
-//    CvPoint center_unrotated = getUnrotatedPoint(center, dp._entry._face_angle, center);
-    
+
+#if SHOW_ALL_RECTANGLEsS   
+    frameList.iterateFrameList((void*) &wp, drawCroppedFrame);
+#endif 
+   
     drawCircle(&wp, center, dp._entry._face_radius, CV_RGB(255,0,0), true);
     drawRect(&wp, frameList.middleConsecutiveWithFaces(), CV_RGB(0,0,255), false);
     drawRect(&wp, frameList.getBestFace(), CV_RGB(255,255,0), false);
-
+ 
     cvShowImage (WINDOW_NAME, wp._draw_image); 
     cvWaitKey(1000);
     
     cvReleaseImage(&wp._draw_image);
     return frameList;
+}
+
+/*
+ *  Process (detect faces) in set of frames within an image with a particular
+ *  combination of settings (in dp)
+ *  Returns a list of results, one for each frame
+ */
+void  
+    processOneImage3(const DetectorState& dp /*,
+                     const DrawParams& wp */) {
+   
+    CvRect new_face_rect = detectFacesCenterAdaptive(&dp);  
+    
+    // draw faces
+    DrawParams wp;
+    wp._draw_image    = cvCreateImage(cvSize (dp._current_frame->width, dp._current_frame->height), IPL_DEPTH_8U, 3);
+   
+    cvFlip (dp._current_frame, wp._draw_image, 1);
+    
+   
+    CvRect face_rect = dp._entry.getFaceRect(FACE_CROP_SCALE);
+    CvPoint center = cvPoint(dp._entry._face_center.x - face_rect.x, dp._entry._face_center.y - face_rect.y);
+
+#if SHOW_ALL_RECTANGLEsS   
+  //  frameList.iterateFrameList((void*) &wp, drawCroppedFrame);
+#endif 
+   
+    drawCircle(&wp, center, dp._entry._face_radius, CV_RGB(255,0,0), true);
+    drawRect(&wp, face_rect, CV_RGB(0,0,255), false);
+    drawRect(&wp, new_face_rect, CV_RGB(255,255,255), false);
+
+ //   drawRect(&wp, frameList.getBestFace(), CV_RGB(255,255,0), false);
+ 
+    cvShowImage (WINDOW_NAME, wp._draw_image); 
+    cvWaitKey(1000);
+    
+    cvReleaseImage(&wp._draw_image);
+   
 }
 
 struct FaceDetectResult {
@@ -730,7 +766,11 @@ vector<FaceDetectResult>
         for (scale_factor = pr._scale_factor_min; scale_factor <= pr._scale_factor_max; scale_factor += pr._scale_factor_delta) {
             dp._scale_factor = scale_factor;
             dp._min_neighbors = min_neighbors;
+#if ADAPTIVE_FACE_SEARCH
+            processOneImage3(dp);
+#else            
             frameList = processOneImage2(dp);
+#endif            
             int num_false_positives = frameList.numFalsePositives(); // !@#$ This will be true for the test set of images
             FaceDetectResult r(frameList._frames.size(),  frameList.numWithFaces(), frameList.maxConsecutiveWithFaces(), frameList.middleConsecutiveWithFaces(),
                     scale_factor, min_neighbors, 
