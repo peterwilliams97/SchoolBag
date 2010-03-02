@@ -14,7 +14,7 @@
 
 using namespace std;
 
-
+#define TEST_MANY_SETTINGS 1
 #define SORT_AND_SHOW 0
 #define HARDWIRE_HAAR_SETTINGS 1
 #define TEST_NO_CROP 0
@@ -31,7 +31,7 @@ static char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haar
 static const int small_image_scale = 2;
 
 // This is where data files are read from and written to
-static string  test_file_dir;
+//static string  test_file_dir;
 
 // (Diameter of area seached)/(face diameter detected by AgeRage)
 static const double FACE_CROP_RATIO = 2.5; //  1.7; // 3.0; // = 1.5;
@@ -683,7 +683,7 @@ vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascad
     vector<FaceDetectResult>  all_results;
     for (vector<FileEntry>::const_iterator it = pr._file_entries.begin(); it != pr._file_entries.end(); it++) {
         FileEntry e = *it;
-        e._image_name = test_file_dir + e._image_name;
+    
 #if VERBOSE        
         cout << "--------------------- " << e._image_name << " -----------------" << endl;
 #endif        
@@ -697,12 +697,12 @@ vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascad
     return all_results;
 }
 
-
+#if TEST_MANY_SETTINGS
 
 int main (int argc, char * const argv[]) {
     startup();
 
-    test_file_dir = "/Users/user/Desktop/percipo_pics/";
+    string test_file_dir = "/Users/user/Desktop/percipo_pics/";
     string files_list_name = "files_list_verbose.csv";
 #if   ADAPTIVE_FACE_SEARCH
     string output_file_name = "results_adaptive.csv";
@@ -723,7 +723,7 @@ int main (int argc, char * const argv[]) {
  //   pr._cascades.push_back("haarcascade_frontalface_default");
 
  
-    vector<FileEntry> file_entries = readFileListVerbose(test_file_dir + files_list_name) ;
+    vector<FileEntry> file_entries = readFileListVerbose(test_file_dir + files_list_name, files_list_name) ;
     pr._file_entries = file_entries;
     vector<FaceDetectResult> results, all_results;
     
@@ -744,6 +744,49 @@ int main (int argc, char * const argv[]) {
     SHOW_RESULTS(all_results);
     return 0;
 }
+
+#else // #if TEST_MANY_SETTINGS
+
+/*
+I'm not sure it makes sense to pass the face detection parameters as
+inputs to your framing code -- because this detection will be only
+based on one detection (not very accurate).  The input image will be
+of a single face, roughly centered, and already uprighted (rotated).
+
+So, I imagine that the input would be a single image of a single face,
+uprighted, with some generous padding around the face.
+
+The output could be a new image, or the face center and radius,
+either way is fine with me.
+
+If you're using opencv, the image type is "IplImage *"
+It will probably be better to use greyscale images, so that we
+dont have to convert back and forth :
+ gray = cvCreateImage( cvSize(width,height), 8, 1 ) ;
+
+For the first go, let's have your framing code be a standalone
+app that takes a jpeg filename on the command line, and generates
+a new file, like this :
+
+int main(int argc, char **argv)
+{
+ IplImage *image = NULL ;
+ IplImage *new_image = NULL ;
+ char new_filename[8192] ;
+
+ image = cvLoadImage(argv[1], 1) ;
+
+ new_image=peter_framing_filter(image) ;
+
+ sprintf(new_filename,"%s.framed.jpg",argv[1]) ;
+ cvSaveImage(new_filename, new_image, NULL) ;
+
+ return(0) ;
+}
+
+*/
+
+#endif  // #if TEST_MANY_SETTINGS
 
 
 
