@@ -723,7 +723,7 @@ int main (int argc, char * const argv[]) {
  //   pr._cascades.push_back("haarcascade_frontalface_default");
 
  
-    vector<FileEntry> file_entries = readFileListVerbose(test_file_dir + files_list_name, files_list_name) ;
+    vector<FileEntry> file_entries = readFileListVerbose(test_file_dir + files_list_name, test_file_dir) ;
     pr._file_entries = file_entries;
     vector<FaceDetectResult> results, all_results;
     
