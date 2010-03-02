@@ -14,7 +14,7 @@
 
 using namespace std;
 
-#define TEST_MANY_SETTINGS 1
+#define TEST_MANY_SETTINGS 0
 #define SORT_AND_SHOW 0
 #define HARDWIRE_HAAR_SETTINGS 1
 #define TEST_NO_CROP 0
@@ -548,6 +548,31 @@ struct  ParamRanges {
     
 };
 
+/*
+ * Calculate a good crop ratio
+ */
+double calcCropRatio(const IplImage* image, CvRect face_rect, int min_width, double init_ratio) {
+    CvPoint center = getCenter(face_rect);
+    cout << "face_rect = " << rectAsString(face_rect) << endl;
+    cout << "image w x h = " << image->width << " x " << image->height << endl;
+    cout << "min_width = " << min_width << ", init_ratio = " << init_ratio <<  endl;
+    assert(0 <= center.x && center.x < image->width);
+    assert(0 <= center.y && center.y < image->height);
+    
+    int furthest_edge = max(center.x, center.y);
+    furthest_edge = max(furthest_edge, image->width - center.x);
+    furthest_edge = max(furthest_edge, image->height - center.y);  
+    
+    int radius0 = getRadius(face_rect);
+   
+    int target_radius = min(min_width/2, furthest_edge);
+    double target_ratio = (double)target_radius/(double)radius0;
+    double ratio = max(init_ratio, target_ratio);
+    cout << "face crop ratio = " << ratio << endl;
+    return ratio;
+}
+
+#if TEST_MANY_SETTINGS
     
 vector<FaceDetectResult>  
     processOneImage(DetectorState& dp,
@@ -598,29 +623,7 @@ vector<FaceDetectResult>
     return results;
 }
 
-/*
- * Calculate a good crop ratio
- */
-double calcCropRatio(const IplImage* image, CvRect face_rect, int min_width, double init_ratio) {
-    CvPoint center = getCenter(face_rect);
-    cout << "face_rect = " << rectAsString(face_rect) << endl;
-    cout << "image w x h = " << image->width << " x " << image->height << endl;
-    cout << "min_width = " << min_width << ", init_ratio = " << init_ratio <<  endl;
-    assert(0 <= center.x && center.x < image->width);
-    assert(0 <= center.y && center.y < image->height);
-    
-    int furthest_edge = max(center.x, center.y);
-    furthest_edge = max(furthest_edge, image->width - center.x);
-    furthest_edge = max(furthest_edge, image->height - center.y);  
-    
-    int radius0 = getRadius(face_rect);
-   
-    int target_radius = min(min_width/2, furthest_edge);
-    double target_ratio = (double)target_radius/(double)radius0;
-    double ratio = max(init_ratio, target_ratio);
-    cout << "face crop ratio = " << ratio << endl;
-    return ratio;
-}
+
 
 vector<FaceDetectResult> 
     detectInOneImage(DetectorState& dp,
@@ -649,13 +652,14 @@ vector<FaceDetectResult>
 }
 
 
-vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascadeName)     {
+
+vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascade_name)     {
   
     CFBundleRef mainBundle  = CFBundleGetMainBundle ();
     assert (mainBundle);
     
     CFURLRef  cascade_url = CFBundleCopyResourceURL (mainBundle, 
-                     CFStringCreateWithCString(NULL, cascadeName.c_str(), kCFStringEncodingASCII),
+                     CFStringCreateWithCString(NULL, cascade_name.c_str(), kCFStringEncodingASCII),
                     CFSTR("xml"), NULL);
     assert (cascade_url);
     Boolean     got_it      = CFURLGetFileSystemRepresentation (cascade_url, true, 
@@ -670,7 +674,7 @@ vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascad
     cvNamedWindow (WINDOW_NAME, CV_WINDOW_AUTOSIZE);
 #endif    
 
-    dp._cascade_name = cascadeName;
+    dp._cascade_name = cascade_name;
     dp._cascade = (CvHaarClassifierCascade*) cvLoad (CASCADE_NAME, 0, 0, 0);
     dp._storage = cvCreateMemStorage(0);
     dp._face_crop_ratio = FACE_CROP_RATIO;
@@ -697,7 +701,7 @@ vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascad
     return all_results;
 }
 
-#if TEST_MANY_SETTINGS
+
 
 int main (int argc, char * const argv[]) {
     startup();
@@ -747,6 +751,92 @@ int main (int argc, char * const argv[]) {
 
 #else // #if TEST_MANY_SETTINGS
 
+FaceDetectResult processOneImage(DetectorState& dp)  {
+#if ADAPTIVE_FACE_SEARCH
+    CroppedFrameList_Adaptive  frame_list = processOneImage_Adaptive(dp);
+#else
+    CroppedFrameList_Histogram frame_list = processOneImage_Histogram(dp);
+#endif
+    CvRect best_face_orig_coords = offsetRectByRect(frame_list.getBestFace(), dp._entry.getFaceRect(dp._face_crop_ratio));
+    FaceDetectResult r(dp._entry, dp._cascade_name, best_face_orig_coords);
+    showOneResultFile(r, cout);
+   // showOneResultFile(r, pr._output_file);
+    drawResultImage(r);
+    return r;
+}
+
+FaceDetectResult detectInOneImage(DetectorState& dp,
+                               //   const ParamRanges& pr,
+                                   FileEntry& entry) {
+    dp._entry = entry;
+   
+    IplImage*  image  = cvLoadImage(dp._entry._image_name.c_str());
+    if (!image) {
+        cerr << "Could not find '" << dp._entry._image_name << "'" << endl;
+        abort();
+    }
+    if (entry._face_radius == 0) {
+        CvRect face = cvRect(0, 0, image->width, image->height);
+        entry._face_radius = getRadius(face);
+        entry._face_center = getCenter(face);
+    }
+
+    IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle(), entry._face_center); 
+    CvRect face_rect =  entry.getFaceRect(1.0);
+    dp._face_crop_ratio = calcCropRatio(image, face_rect, MIN_CROP_WIDTH, FACE_CROP_RATIO);
+    CvRect crop_rect =  entry.getFaceRect(dp._face_crop_ratio);
+    cout << "crop_rect = " << rectAsString(crop_rect)<< endl;
+    dp._current_frame = cropImage(image2,  crop_rect);  
+    assert (dp._current_frame );
+
+    FaceDetectResult  result = processOneImage(dp) ;
+  
+    cvReleaseImage(&dp._current_frame); 
+    cvReleaseImage(&image2);    
+    return result;
+}
+
+FaceDetectResult peterFramingFilter(FileEntry& entry)     {
+    const string cascade_name = "haarcascade_frontalface_alt2";
+    
+    CFBundleRef mainBundle  = CFBundleGetMainBundle ();
+    assert (mainBundle);
+    
+    CFURLRef cascade_url = CFBundleCopyResourceURL (mainBundle, 
+                     CFStringCreateWithCString(NULL, cascade_name.c_str(), kCFStringEncodingASCII),
+                    CFSTR("xml"), NULL);
+    assert (cascade_url);
+    Boolean  got_it  = CFURLGetFileSystemRepresentation (cascade_url, true, 
+                                                                reinterpret_cast<UInt8 *>(CASCADE_NAME), CASCADE_NAME_LEN);
+    if (! got_it)
+        abort ();
+    
+    DetectorState dp;
+   
+#if DRAW_FACES   
+    // create all necessary instances
+    cvNamedWindow (WINDOW_NAME, CV_WINDOW_AUTOSIZE);
+#endif    
+
+    dp._cascade_name = cascade_name;
+    dp._cascade = (CvHaarClassifierCascade*) cvLoad (CASCADE_NAME, 0, 0, 0);
+    dp._storage = cvCreateMemStorage(0);
+    dp._face_crop_ratio = FACE_CROP_RATIO;
+    assert (dp._storage);
+    
+    // did we load the cascade?!?
+    if (!dp._cascade)
+        abort ();
+
+    FaceDetectResult result = detectInOneImage(dp, entry) ;   
+    
+    
+    cvReleaseMemStorage(&dp._storage);
+    cvFree(&dp._cascade);
+    
+    return result;
+}
+
 /*
 I'm not sure it makes sense to pass the face detection parameters as
 inputs to your framing code -- because this detection will be only
@@ -785,6 +875,26 @@ int main(int argc, char **argv)
 }
 
 */
+
+
+int main(int argc, char* argv[]) {
+    FileEntry entry;
+    entry._image_name = argv[1];
+    FaceDetectResult result = peterFramingFilter(entry) ;
+    
+    IplImage*  image  = cvLoadImage(entry._image_name.c_str());
+    if (!image) {
+        cerr << "Could not find '" << entry._image_name << "'" << endl;
+        abort();
+    }
+    IplImage*  cropped_image = cropImage(image, result._face_rect);  
+    string cropped_image_name = entry._image_name + ".framed.jpg";
+    cvSaveImage(cropped_image_name.c_str(), cropped_image);
+  
+    cvReleaseImage(&cropped_image); 
+    cvReleaseImage(&image);    
+    return 0;
+}
 
 #endif  // #if TEST_MANY_SETTINGS
 
