@@ -14,7 +14,7 @@
 
 using namespace std;
 
-#define TEST_MANY_SETTINGS 0
+#define TEST_MANY_SETTINGS 1
 #define SORT_AND_SHOW 0
 #define HARDWIRE_HAAR_SETTINGS 1
 #define TEST_NO_CROP 0
@@ -93,7 +93,7 @@ vector<CvRect> detectFacesCrop(const DetectorState& dp, const CvRect* rect)    {
                                         CV_HAAR_DO_CANNY_PRUNING, cvSize (30, 30));
          
     vector <CvRect> face_list(faces != 0 ? faces->total : 0);
-    for (int j = 0; j < face_list.size(); j++) {
+    for (int j = 0; j < (int)face_list.size(); j++) {
         face_list[j] = *((CvRect*) cvGetSeqElem (faces, j));
         assert(containsRect(cvRect(0, 0, small_image->width, small_image->height), face_list[j]));
        // Scale up to original image size
@@ -135,7 +135,7 @@ vector<CvRect> detectFaces(const DetectorState& dp)    {
  *   each rect at output
  */
 void detectFacesMultiFrame(const DetectorState& dp, CroppedFrameList* croppedFrameList) {	
-    for (int i = 0; i < croppedFrameList->_frames.size(); i++) {
+    for (int i = 0; i < (int)croppedFrameList->_frames.size(); i++) {
         CvRect rect =  croppedFrameList->_frames[i]._rect;
         vector<CvRect> faces = detectFacesCrop(dp, &rect);
         croppedFrameList->_frames[i]._faces = faces;
