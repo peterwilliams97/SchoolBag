@@ -14,20 +14,29 @@
 
 using namespace std;
 
-#define TEST_MANY_SETTINGS 1
+#define MAC_APP 1
+#define TEST_MANY_SETTINGS 0
 #define SORT_AND_SHOW 0
 #define HARDWIRE_HAAR_SETTINGS 1
 #define TEST_NO_CROP 0
 #define ADAPTIVE_FACE_SEARCH 0
-#define DRAW_FACES 1
+#define DRAW_FACES 0
 #define SHOW_ALL_RECTANGLES 1
 #define VERBOSE 1
+
+#ifdef NOT_MAC_APP
+ #undef MAC_APP
+ #define MAC_APP 0
+ #undef TEST_MANY_SETTINGS
+ #define TEST_MANY_SETTINGS 0
+ 
+#endif
 
 #if DRAW_FACES 
  static const char * WINDOW_NAME  = "Face Tracker with Sub-Frames";
 #endif
-static const CFIndex CASCADE_NAME_LEN = 2048;
-static char    CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
+
+
 static const int small_image_scale = 2;
 
 // This is where data files are read from and written to
@@ -392,7 +401,7 @@ CroppedFrameList_Adaptive detectFacesCenter_Adaptive(const DetectorState& dp)   
 
 
 
-
+#if DRAW_FACES 
 static void drawCroppedFrame(const void* ptr, const CroppedFrame& frame) {
     const DrawParams* wp = (const DrawParams*)ptr;
     CvScalar frame_color = (frame._faces.size() > 0) ? CV_RGB(0,0,255) : CV_RGB(125,125,125);
@@ -413,6 +422,7 @@ static void drawCroppedFrame(const void* ptr, const CroppedFrame& frame) {
     cout << endl;
 #endif    
 }
+#endif
 
 
 /*
@@ -497,6 +507,7 @@ CroppedFrameList_Adaptive
 /*
  * Draw results in original image
  */
+#if DRAW_FACES
 static void drawResultImage(const FaceDetectResult& result) {
     FileEntry  entry = result._entry;
     IplImage*  image  = cvLoadImage(entry._image_name.c_str());
@@ -518,7 +529,10 @@ static void drawResultImage(const FaceDetectResult& result) {
     cvReleaseImage(&wp._draw_image);
     cvReleaseImage(&image);
 }
-                   
+#define DRAW_RESULT_IMAGE(r) drowResultImage(r)
+#else
+#define DRAW_RESULT_IMAGE(r)
+#endif                   
 
 /*
  *  Ranges of inputs to the program
@@ -570,6 +584,34 @@ double calcCropRatio(const IplImage* image, CvRect face_rect, int min_width, dou
     double ratio = max(init_ratio, target_ratio);
     cout << "face crop ratio = " << ratio << endl;
     return ratio;
+}
+
+/*
+ * Load cascade, either from the OS X app resouce bundle or from a known location
+ */ 
+#if MAC_APP
+static const int CASCADE_NAME_LEN = 2048;
+static char   CASCADE_NAME[CASCADE_NAME_LEN] = "~/opencv/data/haarcascades/haarcascade_frontalface_alt2.xml";
+#endif
+static const string getCascadePath(const string cascade_name)     {
+    string cascade_path;
+#if MAC_APP
+    CFBundleRef mainBundle  = CFBundleGetMainBundle();
+    assert (mainBundle);
+    
+    CFURLRef  cascade_url = CFBundleCopyResourceURL (mainBundle, 
+                     CFStringCreateWithCString(NULL, cascade_name.c_str(), kCFStringEncodingASCII),
+                    CFSTR("xml"), NULL);
+    assert (cascade_url);
+    Boolean     got_it      = CFURLGetFileSystemRepresentation (cascade_url, true, 
+                                                                reinterpret_cast<UInt8 *>(CASCADE_NAME), CASCADE_NAME_LEN);
+    if (! got_it)
+        abort ();
+    cascade_path = CASCADE_NAME;
+#else
+    cascade_path = cascade_name + ".xml";
+#endif    
+    return cascade_path;
 }
 
 #if TEST_MANY_SETTINGS
@@ -654,7 +696,8 @@ vector<FaceDetectResult>
 
 
 vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascade_name)     {
-  
+/* 
+#if MAC_APP
     CFBundleRef mainBundle  = CFBundleGetMainBundle ();
     assert (mainBundle);
     
@@ -666,23 +709,31 @@ vector<FaceDetectResult>  main_stuff (const ParamRanges& pr, const string cascad
                                                                 reinterpret_cast<UInt8 *>(CASCADE_NAME), CASCADE_NAME_LEN);
     if (! got_it)
         abort ();
+    string cascade_path = CASCADE_NAME;
+#else
+    string cascade_path = cascade_name + ".xml";
+#endif    
+*/
     
     DetectorState dp;
+ 
+    dp._cascade_name = cascade_name;
+    const string cascade_path = getCascadePath(cascade_name);
+    dp._cascade = (CvHaarClassifierCascade*) cvLoad (cascade_path.c_str(), 0, 0, 0);
+    if (!dp._cascade) {
+        cerr << "Could not load cascade '" << cascade_path << "'" << endl;
+        abort(); 
+    }
+    dp._storage = cvCreateMemStorage(0);
+    dp._face_crop_ratio = FACE_CROP_RATIO;
+    assert (dp._storage);
    
 #if DRAW_FACES   
     // create all necessary instances
     cvNamedWindow (WINDOW_NAME, CV_WINDOW_AUTOSIZE);
-#endif    
-
-    dp._cascade_name = cascade_name;
-    dp._cascade = (CvHaarClassifierCascade*) cvLoad (CASCADE_NAME, 0, 0, 0);
-    dp._storage = cvCreateMemStorage(0);
-    dp._face_crop_ratio = FACE_CROP_RATIO;
-    assert (dp._storage);
+#endif 
     
-    // did we load the cascade?!?
-    if (!dp._cascade)
-        abort ();
+    
 
     vector<FaceDetectResult>  all_results;
     for (vector<FileEntry>::const_iterator it = pr._file_entries.begin(); it != pr._file_entries.end(); it++) {
@@ -761,7 +812,7 @@ FaceDetectResult processOneImage(DetectorState& dp)  {
     FaceDetectResult r(dp._entry, dp._cascade_name, best_face_orig_coords);
     showOneResultFile(r, cout);
    // showOneResultFile(r, pr._output_file);
-    drawResultImage(r);
+    DRAW_RESULT_IMAGE(r);
     return r;
 }
 
@@ -798,7 +849,7 @@ FaceDetectResult detectInOneImage(DetectorState& dp,
 
 FaceDetectResult peterFramingFilter(FileEntry& entry)     {
     const string cascade_name = "haarcascade_frontalface_alt2";
-    
+   /* 
     CFBundleRef mainBundle  = CFBundleGetMainBundle ();
     assert (mainBundle);
     
@@ -810,30 +861,30 @@ FaceDetectResult peterFramingFilter(FileEntry& entry)     {
                                                                 reinterpret_cast<UInt8 *>(CASCADE_NAME), CASCADE_NAME_LEN);
     if (! got_it)
         abort ();
+   */ 
     
-    DetectorState dp;
-   
+      
 #if DRAW_FACES   
     // create all necessary instances
     cvNamedWindow (WINDOW_NAME, CV_WINDOW_AUTOSIZE);
 #endif    
 
+    DetectorState dp;
     dp._cascade_name = cascade_name;
-    dp._cascade = (CvHaarClassifierCascade*) cvLoad (CASCADE_NAME, 0, 0, 0);
+    const string cascade_path = getCascadePath(cascade_name);
+    dp._cascade = (CvHaarClassifierCascade*) cvLoad (cascade_path.c_str(), 0, 0, 0);
+    if (!dp._cascade) {
+        cerr << "Could not load cascade '" << cascade_path << "'" << endl;
+        abort(); 
+    }
     dp._storage = cvCreateMemStorage(0);
-    dp._face_crop_ratio = FACE_CROP_RATIO;
     assert (dp._storage);
     
-    // did we load the cascade?!?
-    if (!dp._cascade)
-        abort ();
-
+    dp._face_crop_ratio = FACE_CROP_RATIO;
     FaceDetectResult result = detectInOneImage(dp, entry) ;   
-    
     
     cvReleaseMemStorage(&dp._storage);
     cvFree(&dp._cascade);
-    
     return result;
 }
 
@@ -878,7 +929,11 @@ int main(int argc, char **argv)
 
 
 int main(int argc, char* argv[]) {
-    FileEntry entry;
+    if (argc <= 1) {
+        cerr << "Usage: peter_framing_filter <filename>" << endl;
+        return 1;
+    }
+     FileEntry entry;
     entry._image_name = argv[1];
     FaceDetectResult result = peterFramingFilter(entry) ;
     
