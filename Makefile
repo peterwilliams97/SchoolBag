@@ -14,6 +14,7 @@ ifeq ($(UNAME_SHORT),Linux)
   DEFINES += -DLINUX -D_REENTRANT -D_GNU_SOURCE
   CFLAGS += -isystem/usr/local/include/opencv
   LDFLAGS += `pkg-config --libs opencv`
+ # LDFLAGS += -L/usr/local/install/opencv_svn/latest_tested_snapshot/opencv/build/lib/
   LDFLAGS += -lpthread
 
   CFLAGS += `pkg-config --cflags opencv`

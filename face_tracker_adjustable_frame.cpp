@@ -1,11 +1,10 @@
-
-#include <OpenCV/OpenCV.h>
 #include <cassert>
 #include <iostream>
 #include <fstream>
 #include <iomanip>
 #include <algorithm>
 #include <list>
+#include "face_common.h"
 #include "face_io.h"
 #include "face_draw.h"
 #include "face_calc.h"
@@ -15,12 +14,12 @@
 using namespace std;
 
 #define MAC_APP 1
-#define TEST_MANY_SETTINGS 0
+#define TEST_MANY_SETTINGS 1
 #define SORT_AND_SHOW 0
 #define HARDWIRE_HAAR_SETTINGS 1
 #define TEST_NO_CROP 0
 #define ADAPTIVE_FACE_SEARCH 0
-#define DRAW_FACES 0
+#define DRAW_FACES 1
 #define SHOW_ALL_RECTANGLES 1
 #define VERBOSE 1
 
@@ -282,21 +281,9 @@ static CvRect findFaceSize(const DetectorState& dp, CvRect outer_frame, CvRect s
     }
     return best_face;
 }
-/*  
- *   Detect faces in an image and a set of frame starting from middle
- - start from the origianal frame given to you
-- enlarge the frame by some factor, say 1.1x the radius
-- detect face
-- slide to the left till you don't find any more faces
-- slide to the right till you don't find any more faces
-- do the same thing horizontally
-- find the mid point of the above ranges
-- consider this point your median face center (now we need to find a good, stable radius)
-*- enlarge the frame and detect face
-- repeat while face center falls within some tolerance of the original face center till failure
-- then reduce the frame from *-
-- use the mid point of these as the stable face radius
- */ 
+
+
+ 
 CroppedFrameList_Adaptive detectFacesCenter_Adaptive(const DetectorState& dp)    {
    
     CroppedFrameList_Adaptive frame_list;
@@ -655,7 +642,9 @@ vector<FaceDetectResult>
           
             showOneResultFile(r, cout);
             showOneResultFile(r, pr._output_file);
+#if DRAW_FACES            
             drawResultImage(r);
+#endif            
         }
     }
 #if VERBOSE   
