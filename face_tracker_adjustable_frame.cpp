@@ -18,7 +18,7 @@ using namespace std;
 #define SORT_AND_SHOW 0
 #define HARDWIRE_HAAR_SETTINGS 1
 #define TEST_NO_CROP 0
-#define ADAPTIVE_FACE_SEARCH 0
+#define ADAPTIVE_FACE_SEARCH 1
 #define DRAW_FACES 1
 #define SHOW_ALL_RECTANGLES 1
 #define VERBOSE 1
@@ -491,6 +491,10 @@ CroppedFrameList_Adaptive
     return frame_list;
 }
 
+static IplImage* scaleImage640x480(IplImage* image) {
+    return scaleImageWH(image, 480, 640);
+}
+
 /*
  * Draw results in original image
  */
@@ -502,19 +506,24 @@ static void drawResultImage(const FaceDetectResult& result) {
         cerr << "Could not find '" << entry._image_name << "'" << endl;
         abort();
     }
+    IplImage*  scaled_image = scaleImage640x480(image);
+    cvReleaseImage(&image);
     DrawParams wp;
-    wp._draw_image    = cvCreateImage(cvSize (image->width, image->height), IPL_DEPTH_8U, 3);
-    cvFlip (image, wp._draw_image, 1);
+    wp._draw_image    = cvCreateImage(cvSize (scaled_image->width, scaled_image->height), IPL_DEPTH_8U, 3);
+    
+    cvFlip (scaled_image, wp._draw_image, 1);
     CvRect face_rect = result._face_rect; 
     CvRect orig_rect = entry.getFaceRect(1.0);
+    CvRect image_rect = cvRect(0, 0, scaled_image->width, scaled_image->height); 
     
+    drawRect(&wp, image_rect, CV_RGB(255,255,255), false);
     drawRect(&wp, face_rect, CV_RGB(255,0,0), false);
     drawRect(&wp, orig_rect, CV_RGB(0,0,255), false);
 
     cvShowImage (WINDOW_NAME, wp._draw_image); 
     cvWaitKey(4000);
     cvReleaseImage(&wp._draw_image);
-    cvReleaseImage(&image);
+    cvReleaseImage(&scaled_image);
 }
 #define DRAW_RESULT_IMAGE(r) drowResultImage(r)
 #else
@@ -656,6 +665,7 @@ vector<FaceDetectResult>
 
 
 
+
 vector<FaceDetectResult> 
     detectInOneImage(DetectorState& dp,
                const ParamRanges& pr,
@@ -667,7 +677,8 @@ vector<FaceDetectResult>
         cerr << "Could not find '" << dp._entry._image_name << "'" << endl;
         abort();
     }
-    IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle(), entry._face_center); 
+    IplImage*  scaled_image = scaleImage640x480(image);
+    IplImage*  image2 = rotateImage(scaled_image, entry.getStraighteningAngle(), entry._face_center); 
     CvRect face_rect =  entry.getFaceRect(1.0);
     dp._face_crop_ratio = calcCropRatio(image, face_rect, MIN_CROP_WIDTH, FACE_CROP_RATIO);
     CvRect crop_rect =  entry.getFaceRect(dp._face_crop_ratio);
@@ -678,6 +689,7 @@ vector<FaceDetectResult>
     vector<FaceDetectResult>  results = processOneImage(dp, pr) ;
   
     cvReleaseImage(&dp._current_frame); 
+    cvReleaseImage(&scaled_image);
     cvReleaseImage(&image2);    
     return results;
 }
@@ -821,7 +833,8 @@ FaceDetectResult detectInOneImage(DetectorState& dp,
         entry._face_center = getCenter(face);
     }
 
-    IplImage*  image2 = rotateImage(image, entry.getStraighteningAngle(), entry._face_center); 
+    IplImage*  scaled_image = scaleImage640x480(image);
+    IplImage*  image2 = rotateImage(scaled_image, entry.getStraighteningAngle(), entry._face_center); 
     CvRect face_rect =  entry.getFaceRect(1.0);
     dp._face_crop_ratio = calcCropRatio(image, face_rect, MIN_CROP_WIDTH, FACE_CROP_RATIO);
     CvRect crop_rect =  entry.getFaceRect(dp._face_crop_ratio);
@@ -832,6 +845,7 @@ FaceDetectResult detectInOneImage(DetectorState& dp,
     FaceDetectResult  result = processOneImage(dp) ;
   
     cvReleaseImage(&dp._current_frame); 
+    cvReleaseImage(scaled_image);
     cvReleaseImage(&image2);    
     return result;
 }
@@ -931,10 +945,12 @@ int main(int argc, char* argv[]) {
         cerr << "Could not find '" << entry._image_name << "'" << endl;
         abort();
     }
-    IplImage*  cropped_image = cropImage(image, result._face_rect);  
+    IplImage*  scaled_image = scaleImage640x480(image);
+    IplImage*  cropped_image = cropImage(scaled_image, result._face_rect);  
     string cropped_image_name = entry._image_name + ".framed.jpg";
     cvSaveImage(cropped_image_name.c_str(), cropped_image);
   
+    cvReleaseImage(&scaled_image);
     cvReleaseImage(&cropped_image); 
     cvReleaseImage(&image);    
     return 0;
