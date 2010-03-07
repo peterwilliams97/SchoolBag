@@ -18,9 +18,10 @@ using namespace std;
 #define SORT_AND_SHOW 0
 #define HARDWIRE_HAAR_SETTINGS 1
 #define TEST_NO_CROP 0
-#define ADAPTIVE_FACE_SEARCH 1
+#define ADAPTIVE_FACE_SEARCH 0
 #define DRAW_FACES 1
-#define SHOW_ALL_RECTANGLES 1
+#define DRAW_WAIT 10
+#define SHOW_ALL_RECTANGLES 0
 #define VERBOSE 1
 
 #ifdef NOT_MAC_APP
@@ -28,11 +29,16 @@ using namespace std;
  #define MAC_APP 0
  #undef TEST_MANY_SETTINGS
  #define TEST_MANY_SETTINGS 0
- 
 #endif
 
 #if DRAW_FACES 
  static const char * WINDOW_NAME  = "Face Tracker with Sub-Frames";
+#endif
+
+#if ADAPTIVE_FACE_SEARCH
+const string test_type_name = "adaptive";
+#else
+const string test_type_name = "histogram";
 #endif
 
 
@@ -259,7 +265,12 @@ static CvRect findFaceSize(const DetectorState& dp, CvRect outer_frame, CvRect s
             max_i = i;
     }
     for (int i = num_steps/2+1; i < num_steps; i++) {
-        CvRect rect = scaleRectConcentric(start_frame, exp(ratio_step*(double)(i- num_steps/2))) ;
+        assert(ratio_step*(double)(i- num_steps/2) <= 1.0);
+        CvRect rect = scaleRectConcentric(start_frame, exp(ratio_step*(double)(i- num_steps/2)));
+        assert(containsRect(outer_frame, rect));
+        assert(containsRect(cvRect(0, 0, dp._current_frame->width, dp._current_frame->height), outer_frame));
+        assert(containsRect(cvRect(0, 0, dp._current_frame->width, dp._current_frame->height), rect));
+
         vector<CvRect> faces = detectFacesCrop(dp, &rect);
         if (!hasValidFaceBoth(faces, min_allowed_width, min_allowed_height, face_center, tolerance))
             break;
@@ -388,7 +399,7 @@ CroppedFrameList_Adaptive detectFacesCenter_Adaptive(const DetectorState& dp)   
 
 
 
-#if DRAW_FACES 
+#if DRAW_FACES && SHOW_ALL_RECTANGLES
 static void drawCroppedFrame(const void* ptr, const CroppedFrame& frame) {
     const DrawParams* wp = (const DrawParams*)ptr;
     CvScalar frame_color = (frame._faces.size() > 0) ? CV_RGB(0,0,255) : CV_RGB(125,125,125);
@@ -441,7 +452,7 @@ CroppedFrameList_Histogram
     drawRect(&wp, frame_list.getBestFace(), CV_RGB(255,255,0), false);
  
     cvShowImage (WINDOW_NAME, wp._draw_image); 
-    cvWaitKey(4000);
+    cvWaitKey(DRAW_WAIT);
     cvReleaseImage(&wp._draw_image);
 #endif  // #if DRAW_FACES 
   
@@ -483,16 +494,19 @@ CroppedFrameList_Adaptive
     drawCircle(&wp, center, dp._entry._face_radius, CV_RGB(255,0,0), true);
     drawRect(&wp, position_frame, CV_RGB(255,0,255), false);
     drawRect(&wp, best_face, CV_RGB(255,255,255), false);
-
+    
     cvShowImage (WINDOW_NAME, wp._draw_image); 
-    cvWaitKey(4000);
+    cvWaitKey(DRAW_WAIT);
     cvReleaseImage(&wp._draw_image);
 #endif // #if DRAW_FACES     
     return frame_list;
 }
 
 static IplImage* scaleImage640x480(IplImage* image) {
-    return scaleImageWH(image, 480, 640);
+    if (image->width > image->height)
+        return scaleImageWH(image, 640, 480);
+    else
+        return scaleImageWH(image, 480, 640);
 }
 
 /*
@@ -514,14 +528,15 @@ static void drawResultImage(const FaceDetectResult& result) {
     cvFlip (scaled_image, wp._draw_image, 1);
     CvRect face_rect = result._face_rect; 
     CvRect orig_rect = entry.getFaceRect(1.0);
-    CvRect image_rect = cvRect(0, 0, scaled_image->width, scaled_image->height); 
     
-    drawRect(&wp, image_rect, CV_RGB(255,255,255), false);
     drawRect(&wp, face_rect, CV_RGB(255,0,0), false);
     drawRect(&wp, orig_rect, CV_RGB(0,0,255), false);
 
+    string marked_image_name = entry._image_name + "." + test_type_name + ".marked.jpg";
     cvShowImage (WINDOW_NAME, wp._draw_image); 
-    cvWaitKey(4000);
+    cvWaitKey(DRAW_WAIT);
+    cvSaveImage(marked_image_name.c_str(), wp._draw_image);
+
     cvReleaseImage(&wp._draw_image);
     cvReleaseImage(&scaled_image);
 }
