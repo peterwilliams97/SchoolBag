@@ -29,6 +29,8 @@ using namespace std;
  #define MAC_APP 0
  #undef TEST_MANY_SETTINGS
  #define TEST_MANY_SETTINGS 0
+ #undef DRAW_FACES 
+ #define DRAW_FACES 0
 #endif
 
 #if DRAW_FACES 
