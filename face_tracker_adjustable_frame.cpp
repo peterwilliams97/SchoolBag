@@ -13,16 +13,19 @@
 
 using namespace std;
 
-#define MAC_APP 1
-#define TEST_MANY_SETTINGS 1
-#define SORT_AND_SHOW 0
-#define HARDWIRE_HAAR_SETTINGS 1
-#define TEST_NO_CROP 0
-#define ADAPTIVE_FACE_SEARCH 0
-#define DRAW_FACES 1
-#define DRAW_WAIT 10
-#define SHOW_ALL_RECTANGLES 0
-#define VERBOSE 1
+#define MAC_APP                 1
+#define TEST_MANY_SETTINGS      1
+#define SORT_AND_SHOW           0
+#define HARDWIRE_HAAR_SETTINGS  1
+#define TEST_NO_CROP            0
+#define ADAPTIVE_FACE_SEARCH    1
+#define ADAPTIVE_RECURSIVE      0
+#define ADAPTIVE_NUM_STEPS      61      /* 21 default */
+#define HAAR_SCALE_FACTOR       1.1    /* 1.1 default */
+#define DRAW_FACES              0
+#define DRAW_WAIT               2000
+#define SHOW_ALL_RECTANGLES     1
+#define VERBOSE                 1
 
 #ifdef NOT_MAC_APP
  #undef MAC_APP
@@ -104,7 +107,7 @@ vector<CvRect> detectFacesCrop(const DetectorState& dp, const CvRect* rect)    {
 #if !HARDWIRE_HAAR_SETTINGS
                                     dp._scale_factor, dp._min_neighbors, 
 #else                                    
-                                        1.1, 2, 
+                                        HAAR_SCALE_FACTOR, 2, 
 #endif                                        
                                         CV_HAAR_DO_CANNY_PRUNING, cvSize (30, 30));
          
@@ -242,7 +245,7 @@ enlarge the frame and detect face
 
     Test in range 0.5x to 2.0x original face size = facter of 4;
 */
-static CvRect findFaceSize(const DetectorState& dp, CvRect outer_frame, CvRect start_frame, CvRect start_face,
+static CvRect findFaceSize(const DetectorState& dp, /* CvRect outer_frame, */ CvRect start_frame, CvRect start_face,
                                         int min_allowed_width, int min_allowed_height, double tolerance_ratio) {
     double min_ratio = 0.5;     // Min frame size / start_frame_size
     double max_ratio = 2.0;     // Max frame size / start_frame_size 
@@ -269,8 +272,8 @@ static CvRect findFaceSize(const DetectorState& dp, CvRect outer_frame, CvRect s
     for (int i = num_steps/2+1; i < num_steps; i++) {
         assert(ratio_step*(double)(i- num_steps/2) <= 1.0);
         CvRect rect = scaleRectConcentric(start_frame, exp(ratio_step*(double)(i- num_steps/2)));
-        assert(containsRect(outer_frame, rect));
-        assert(containsRect(cvRect(0, 0, dp._current_frame->width, dp._current_frame->height), outer_frame));
+   //     assert(containsRect(outer_frame, rect));
+  //      assert(containsRect(cvRect(0, 0, dp._current_frame->width, dp._current_frame->height), outer_frame));
         assert(containsRect(cvRect(0, 0, dp._current_frame->width, dp._current_frame->height), rect));
 
         vector<CvRect> faces = detectFacesCrop(dp, &rect);
@@ -295,14 +298,130 @@ static CvRect findFaceSize(const DetectorState& dp, CvRect outer_frame, CvRect s
     return best_face;
 }
 
+#if ADAPTIVE_RECURSIVE
+static CroppedFrameList_Adaptive findFaceCenter(const DetectorState& dp, CvRect base_rect, int min_allowed_width, int min_allowed_height) {
+    int    num_steps = ADAPTIVE_NUM_STEPS;    // Max number of steps to search in x and y direction
+    
+    int    image_width  = dp._current_frame->width;
+    int    image_height = dp._current_frame->height;
+    CvRect rect = base_rect;
+    
+        
+    int dx = (image_width - rect.width)/num_steps;
+    int dy = (image_height - rect.height)/num_steps;
+    
+    CroppedFrameList_Adaptive frame_list;
+    int mid_ix = -1, mid_iy = -1;
+    int min_i = -1, max_i = -1;
+    vector<CroppedFrame> frameSpanX(num_steps);
+    for (int i = num_steps/2; i >= 0; i--) {
+        CvRect rect = cvRect(base_rect.x + (i- num_steps/2)*dx, base_rect.y, base_rect.width, base_rect.height);
+        vector<CvRect> faces = detectFacesCrop(dp, &rect);
+        if (!hasValidFace(faces, min_allowed_width, min_allowed_height))
+            break;
+        CroppedFrame frame(rect, faces);
+        frameSpanX[i] = frame;
+        frame_list._frames.push_back(frame);
+        min_i = i;
+        if (max_i < 0)
+            max_i = i;
+    }
+    for (int i = num_steps/2 + 1; i < num_steps; i++) {
+       CvRect rect = cvRect(base_rect.x + (i- num_steps/2)*dx, base_rect.y, base_rect.width, base_rect.height);
+        vector<CvRect> faces = detectFacesCrop(dp, &rect);
+        if (!hasValidFace(faces, min_allowed_width, min_allowed_height))
+            break;
+        CroppedFrame frame(rect, faces);
+        frameSpanX[i] = frame;
+        frame_list._frames.push_back(frame);
+        max_i = i;
+        if (min_i < 0)
+            min_i = i;
+    }
+    if (min_i >= 0 && max_i >= 0)
+        mid_ix = (min_i + max_i)/2; 
+    
+    min_i = -1, max_i = -1;
+    vector<CroppedFrame> frameSpanY(num_steps);
+    for (int i = num_steps/2; i >= 0; i--) {
+        CvRect rect = cvRect(base_rect.x, base_rect.y + (i- num_steps/2)*dy, base_rect.width, base_rect.height);
+        vector<CvRect> faces = detectFacesCrop(dp, &rect);
+        if (!hasValidFace(faces, min_allowed_width, min_allowed_height))
+            break;
+        CroppedFrame frame(rect, faces);
+        frameSpanY[i] = frame;
+        frame_list._frames.push_back(frame);
+        min_i = i;
+        if (max_i < 0)
+            max_i = i;
+    }
+    for (int i = num_steps/2 + 1; i < num_steps; i++) {
+        CvRect rect = cvRect(base_rect.x, base_rect.y + (i- num_steps/2)*dy, base_rect.width, base_rect.height);
+        vector<CvRect> faces = detectFacesCrop(dp, &rect);
+        if (!hasValidFace(faces, min_allowed_width, min_allowed_height))
+            break;
+        CroppedFrame frame(rect, faces);
+        frameSpanY[i] = frame;
+        frame_list._frames.push_back(frame);
+        max_i = i;
+        if (min_i < 0)
+            min_i = i;
+    }
+    if (min_i >= 0 && max_i >= 0)
+        mid_iy = (min_i + max_i)/2; 
+   
+    if (mid_ix > 0 && mid_iy > 0) {
+        CvPoint center;
+        center.x = getCenter(frameSpanX[mid_ix]._rect).x;
+        center.y = getCenter(frameSpanY[mid_iy]._rect).y;
+        frame_list._position_face  = averageRects(frameSpanX[mid_ix]._faces[0], frameSpanY[mid_iy]._faces[0]);
+        frame_list._position_frame = cvRect(center.x - base_rect.width/2, center.y - base_rect.height/2, base_rect.width, base_rect.height);
+        assert(containsRect(frame_list._position_frame, frame_list._position_face));
+    }
+    return frame_list;
+}
 
- 
+CroppedFrameList_Adaptive detectFacesCenter_Adaptive(const DetectorState& dp)    {
+   
+   
+  //  double frame_to_original = 1.1; // 1.3 kind of works; // 1.6 works;
+  //  double frame_growth = 1.1;
+      int    image_width  = dp._current_frame->width;
+    int    image_height = dp._current_frame->height;
+    
+    // False positive detection. 
+    //      tolerance_ratio = (max dist between face centers)/(frame diameter) = 0.1
+    //      min_scale = (min face diameter)/(frame diameter) = 0.8 
+    double  tolerance_ratio = cvRound(0.1/dp._face_crop_ratio);
+    double  min_face_factor = cvRound(0.8/dp._face_crop_ratio);
+    // Min face sizes - used to eliminate false positive face detections. min_face_factor * original detected face size
+    int min_allowed_width  = cvRound((double)image_width*min_face_factor);
+    int min_allowed_height = cvRound((double)image_height*min_face_factor);
+
+
+      
+    // Guess at right size for rectangle
+   // CvRect base_rect = scaleRectConcentric(cvRect(0,0,image_width,image_height), frame_to_original/dp._face_crop_ratio); 
+    // Find smallest rectangle that contains a face
+    CvRect base_rect = scaleRectConcentric(cvRect(0,0,image_width,image_height), 1.0/1.2);
+    base_rect = findSmallestFaceRectangle(dp, base_rect, min_allowed_width, min_allowed_height);
+    base_rect = scaleRectConcentric(base_rect, 1.1);
+    
+   CroppedFrameList_Adaptive frame_list = findFaceCenter(dp, base_rect, min_allowed_width, min_allowed_height);
+    if (!isEmptyRect(frame_list._position_face)) {
+        CvRect outer_frame = cvRect(0, 0, image_width, image_height);
+        frame_list._final_face = findFaceSize(dp, outer_frame, /* position_frame, */ frame_list._position_face,
+                                        min_allowed_width, min_allowed_height, tolerance_ratio); 
+    }
+    return frame_list;
+}
+#else
 CroppedFrameList_Adaptive detectFacesCenter_Adaptive(const DetectorState& dp)    {
    
     CroppedFrameList_Adaptive frame_list;
   //  double frame_to_original = 1.1; // 1.3 kind of works; // 1.6 works;
   //  double frame_growth = 1.1;
-    int    num_steps = 21;    // Max number of steps to search in x and y direction
+    int    num_steps = ADAPTIVE_NUM_STEPS;    // Max number of steps to search in x and y direction
     int    image_width  = dp._current_frame->width;
     int    image_height = dp._current_frame->height;
     
@@ -393,12 +512,12 @@ CroppedFrameList_Adaptive detectFacesCenter_Adaptive(const DetectorState& dp)   
         assert(containsRect(position_frame, position_face));
         frame_list._position_frame = position_frame;
         CvRect outer_frame = cvRect(0, 0, image_width, image_height);
-        frame_list._final_face = findFaceSize(dp, outer_frame, position_frame, position_face,
+        frame_list._final_face = findFaceSize(dp, /*outer_frame, */position_frame, position_face,
                                         min_allowed_width, min_allowed_height, tolerance_ratio); 
     }
     return frame_list;
 }
-
+#endif
 
 
 #if DRAW_FACES && SHOW_ALL_RECTANGLES
@@ -509,6 +628,18 @@ static IplImage* scaleImage640x480(IplImage* image) {
         return scaleImageWH(image, 640, 480);
     else
         return scaleImageWH(image, 480, 640);
+}
+
+static string intToStr(int n) {
+    stringstream s;
+    s << n;
+    return s.str();
+}
+
+static string doubleToStr(double n) {
+    stringstream s;
+    s << n;
+    return s.str();
 }
 
 /*
@@ -777,11 +908,7 @@ int main (int argc, char * const argv[]) {
 
     string test_file_dir = "/Users/user/Desktop/percipo_pics/";
     string files_list_name = "files_list_verbose.csv";
-#if   ADAPTIVE_FACE_SEARCH
-    string output_file_name = "results_adaptive.csv";
-#else
-    string output_file_name = "results_histogram.csv";
-#endif    
+    string output_file_name = "results_" + test_type_name + "_" + intToStr(ADAPTIVE_NUM_STEPS) + "_" + doubleToStr(HAAR_SCALE_FACTOR) + ".csv";    
     
     ParamRanges pr;
     pr._min_neighbors_min = 3; // 2;
