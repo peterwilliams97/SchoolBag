@@ -5,7 +5,6 @@
  *  Created by peter on 11/03/10.
  */
 
-// #include <iostream>
 #include <sstream>
 
 #include "face_util.h"
