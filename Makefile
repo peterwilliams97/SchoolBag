@@ -14,7 +14,7 @@ ifeq ($(UNAME_SHORT),Linux)
   DEFINES += -DLINUX -D_REENTRANT -D_GNU_SOURCE
   CFLAGS += -isystem/usr/local/include/opencv
   LDFLAGS += `pkg-config --libs opencv`
- # LDFLAGS += -L/usr/local/install/opencv_svn/latest_tested_snapshot/opencv/build/lib/
+  LDFLAGS += -L/usr/local/install/opencv_svn/latest_tested_snapshot/opencv/build/lib/
   LDFLAGS += -lpthread
 
   CFLAGS += `pkg-config --cflags opencv`
@@ -30,6 +30,22 @@ ifeq ($(UNAME_SHORT),Linux)
     CFLAGS += -ggdb
   endif
 
+## New. Matt's code
+GD_LIBS=-lgd -lpng -lz -ljpeg -lfreetype -lm
+CDEF_LIBS=-lod3 -lcdef
+
+VPATH=../../../common
+INCS=-I${VPATH}
+
+# MACH=-m32
+MACH=
+
+LIBDIR=../../john_robinson_3/package/lib64
+CFLAGS += -I../../john_robinson_3/package
+
+export LD_LIBRARY_PATH=.:${LIBDIR}
+
+## End new.
 endif
 
 ifeq ($(OSTYPE),darwin)
@@ -149,7 +165,11 @@ clean:
 	rm -f makehist *.o core
 
 peter_framing_filter:	Makefile  face_draw.o face_io.o face_results.o face_calc.o cropped_frames.o face_tracker_adjustable_frame.o
-	g++ ${CFLAGS} face_draw.o face_io.o face_results.o face_calc.o cropped_frames.o face_tracker_adjustable_frame.o ${LDFLAGS} -o peter_framing_filter${EXEEXT}
+	ln -sf libcdef.so.0.0.2 ${LIBDIR}/libcdef.so
+	ln -sf libcdef.so.0.0.2 ${LIBDIR}/libcdef.so.0
+	ln -sf libod3.so.1.0.2 ${LIBDIR}/libod3.so
+	ln -sf libod3.so.1.0.2 ${LIBDIR}/libod3.so.1
+	g++ ${CFLAGS} face_draw.o face_io.o face_results.o face_calc.o cropped_frames.o face_tracker_adjustable_frame.o ${LDFLAGS} -L. -L${LIBDIR} ${CDEF_LIBS} -o peter_framing_filter${EXEEXT}
 
 face_draw.o: ${H_FILES} face_draw.cpp
 	g++ ${CFLAGS} -c face_draw.cpp

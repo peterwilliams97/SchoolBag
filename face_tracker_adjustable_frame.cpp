@@ -4,12 +4,20 @@
 #include <iomanip>
 #include <algorithm>
 #include <list>
+#include "face_util.h"
 #include "face_common.h"
 #include "face_io.h"
 #include "face_draw.h"
 #include "face_calc.h"
 #include "face_results.h"
 #include "cropped_frames.h"
+
+#ifdef NOT_MAC_APP
+#include "cdef/OD3FaceFinder.h"
+#include "cdef/ImageFileReader.h"
+
+using namespace img;
+#endif
 
 using namespace std;
 
@@ -630,17 +638,7 @@ static IplImage* scaleImage640x480(IplImage* image) {
         return scaleImageWH(image, 480, 640);
 }
 
-static string intToStr(int n) {
-    stringstream s;
-    s << n;
-    return s.str();
-}
 
-static string doubleToStr(double n) {
-    stringstream s;
-    s << n;
-    return s.str();
-}
 
 /*
  * Draw results in original image
@@ -989,7 +987,7 @@ FaceDetectResult detectInOneImage(DetectorState& dp,
     FaceDetectResult  result = processOneImage(dp) ;
   
     cvReleaseImage(&dp._current_frame); 
-    cvReleaseImage(scaled_image);
+    cvReleaseImage(&scaled_image);
     cvReleaseImage(&image2);    
     return result;
 }
