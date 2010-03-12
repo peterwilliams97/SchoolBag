@@ -1,3 +1,5 @@
+#ifndef FACE_CONFIG_H
+#define FACE_CONFIG_H
 /*
  *  config.h
  *  FaceTracker
@@ -11,15 +13,15 @@
 #define HARDWIRE_HAAR_SETTINGS  1
 #define TEST_NO_CROP            0
 #define ADAPTIVE_FACE_SEARCH    1
-#define ADAPTIVE_RECURSIVE      0
-#define ADAPTIVE_NUM_STEPS      61      /* 21 default */
+#define ADAPTIVE_RECURSIVE      1
+#define ADAPTIVE_NUM_STEPS      21      /* 21 default */
 #define HAAR_SCALE_FACTOR       1.1    /* 1.1 default */
-#define DRAW_FACES              0
+#define DRAW_FACES              1
 #define DRAW_WAIT               2000
 #define SHOW_ALL_RECTANGLES     1
 #define VERBOSE                 1
 
-#ifdef NOT_MAC_APP
+#if defined(NOT_MAC_APP) || 0
  #undef MAC_APP
  #define MAC_APP 0
  #undef TEST_MANY_SETTINGS
@@ -27,3 +29,5 @@
  #undef DRAW_FACES 
  #define DRAW_FACES 0
 #endif
+
+#endif // #ifndef FACE_CONFIG_H

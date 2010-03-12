@@ -6,6 +6,8 @@
  *
  *  Created by peter on 4/03/10.
  */
+ 
+#include "config.h" 
 
 #ifdef NOT_MAC_APP
  #include "cv.h"

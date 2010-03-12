@@ -11,6 +11,14 @@ PwRect CvRectToPwRect(CvRect rect) {
     return PwRect(rect.x, rect.y, rect.width, rect.height);
 }
 
+CvRect  PwRectToCvRect(PwRect rect) {
+    return cvRect(rect.x, rect.y, rect.width, rect.height);
+}
+
+CvPoint PwPointToCvPoint(PwPoint point) {
+    return cvPoint(point.x, point.y);
+}
+
 static void showMatrix(const CvMat* rot_mat) {
 #if VERBOSE_HISTOGRAM
     cout << " | " << setprecision(4) << setw(7) << cvmGet(rot_mat, 0, 0) << " | " << setprecision(4) << setw(7) << cvmGet(rot_mat, 0, 1) << " | " << setprecision(4) << setw(7) << cvmGet(rot_mat, 0, 2) << " | " << endl;

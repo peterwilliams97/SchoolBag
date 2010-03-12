@@ -21,7 +21,7 @@ using namespace img;
 #endif
 
 using namespace std;
-
+#if 0
 #define MAC_APP                 1
 #define TEST_MANY_SETTINGS      1
 #define SORT_AND_SHOW           0
@@ -43,6 +43,7 @@ using namespace std;
  #define TEST_MANY_SETTINGS 0
  #undef DRAW_FACES 
  #define DRAW_FACES 0
+#endif
 #endif
 
 #if DRAW_FACES 
@@ -283,8 +284,12 @@ static PwRect findFaceSize(const DetectorState& dp, /* PwRect outer_frame, */ Pw
         PwRect rect = scaleRectConcentric(start_frame, exp(ratio_step*(double)(i- num_steps/2)));
    //     assert(containsRect(outer_frame, rect));
   //      assert(containsRect(cvRect(0, 0, dp._current_frame->width, dp._current_frame->height), outer_frame));
-        assert(containsRect(PwRect(0, 0, dp._current_frame->width, dp._current_frame->height), rect));
-
+        if (!(containsRect(PwRect(0, 0, dp._current_frame->width, dp._current_frame->height), rect))) {
+            cerr << "Frame = " << rectAsString(PwRect(0, 0, dp._current_frame->width, dp._current_frame->height)) << endl;
+            cerr << "rect  = " << rectAsString(rect) << endl;
+            break; // !@#$  Fix this!!!
+            assert(containsRect(PwRect(0, 0, dp._current_frame->width, dp._current_frame->height), rect));
+        }
         vector<PwRect> faces = detectFacesCrop(dp, &rect);
         if (!hasValidFaceBoth(faces, min_allowed_width, min_allowed_height, face_center, tolerance))
             break;
@@ -324,7 +329,7 @@ static CroppedFrameList_Adaptive findFaceCenter(const DetectorState& dp, PwRect 
     int min_i = -1, max_i = -1;
     vector<CroppedFrame> frameSpanX(num_steps);
     for (int i = num_steps/2; i >= 0; i--) {
-        PwRect rect = cvRect(base_rect.x + (i- num_steps/2)*dx, base_rect.y, base_rect.width, base_rect.height);
+        PwRect rect(base_rect.x + (i- num_steps/2)*dx, base_rect.y, base_rect.width, base_rect.height);
         vector<PwRect> faces = detectFacesCrop(dp, &rect);
         if (!hasValidFace(faces, min_allowed_width, min_allowed_height))
             break;
@@ -336,7 +341,7 @@ static CroppedFrameList_Adaptive findFaceCenter(const DetectorState& dp, PwRect 
             max_i = i;
     }
     for (int i = num_steps/2 + 1; i < num_steps; i++) {
-       PwRect rect = cvRect(base_rect.x + (i- num_steps/2)*dx, base_rect.y, base_rect.width, base_rect.height);
+       PwRect rect(base_rect.x + (i- num_steps/2)*dx, base_rect.y, base_rect.width, base_rect.height);
         vector<PwRect> faces = detectFacesCrop(dp, &rect);
         if (!hasValidFace(faces, min_allowed_width, min_allowed_height))
             break;
@@ -353,7 +358,7 @@ static CroppedFrameList_Adaptive findFaceCenter(const DetectorState& dp, PwRect 
     min_i = -1, max_i = -1;
     vector<CroppedFrame> frameSpanY(num_steps);
     for (int i = num_steps/2; i >= 0; i--) {
-        PwRect rect = cvRect(base_rect.x, base_rect.y + (i- num_steps/2)*dy, base_rect.width, base_rect.height);
+        PwRect rect(base_rect.x, base_rect.y + (i- num_steps/2)*dy, base_rect.width, base_rect.height);
         vector<PwRect> faces = detectFacesCrop(dp, &rect);
         if (!hasValidFace(faces, min_allowed_width, min_allowed_height))
             break;
@@ -384,7 +389,7 @@ static CroppedFrameList_Adaptive findFaceCenter(const DetectorState& dp, PwRect 
         center.x = getCenter(frameSpanX[mid_ix]._rect).x;
         center.y = getCenter(frameSpanY[mid_iy]._rect).y;
         frame_list._position_face  = averageRects(frameSpanX[mid_ix]._faces[0], frameSpanY[mid_iy]._faces[0]);
-        frame_list._position_frame = cvRect(center.x - base_rect.width/2, center.y - base_rect.height/2, base_rect.width, base_rect.height);
+        frame_list._position_frame = PwRect(center.x - base_rect.width/2, center.y - base_rect.height/2, base_rect.width, base_rect.height);
         assert(containsRect(frame_list._position_frame, frame_list._position_face));
     }
     return frame_list;
@@ -412,7 +417,7 @@ CroppedFrameList_Adaptive detectFacesCenter_Adaptive(const DetectorState& dp)   
     // Guess at right size for rectangle
    // PwRect base_rect = scaleRectConcentric(cvRect(0,0,image_width,image_height), frame_to_original/dp._face_crop_ratio); 
     // Find smallest rectangle that contains a face
-    PwRect base_rect = scaleRectConcentric(cvRect(0,0,image_width,image_height), 1.0/1.2);
+    PwRect base_rect = scaleRectConcentric(PwRect(0,0,image_width,image_height), 1.0/1.2);
     base_rect = findSmallestFaceRectangle(dp, base_rect, min_allowed_width, min_allowed_height);
     base_rect = scaleRectConcentric(base_rect, 1.1);
     
@@ -533,12 +538,12 @@ CroppedFrameList_Adaptive detectFacesCenter_Adaptive(const DetectorState& dp)   
 static void drawCroppedFrame(const void* ptr, const CroppedFrame& frame) {
     const DrawParams* wp = (const DrawParams*)ptr;
     CvScalar frame_color = (frame._faces.size() > 0) ? CV_RGB(0,0,255) : CV_RGB(125,125,125);
-    drawRect(wp, frame._rect, frame_color, false);
+    drawRect(wp, PwRectToCvRect(frame._rect), frame_color, false);
 #if VERBOSE    
     cout << rectAsString(frame._rect) << " : ";
 #endif
     if (frame._faces.size() > 0) {
-        drawRect(wp, frame._faces[0], CV_RGB(255,0,0), false);
+        drawRect(wp, PwRectToCvRect(frame._faces[0]), CV_RGB(255,0,0), false);
         drawLine(wp, cvPoint(frame._rect.x, frame._rect.y), cvPoint(frame._faces[0].x, frame._faces[0].y), CV_RGB(255,0,0), false);
 #if VERBOSE       
         cout << rectAsString(frame._faces[0]);
@@ -577,9 +582,9 @@ CroppedFrameList_Histogram
     frame_list.iterateFrameList((void*) &wp, drawCroppedFrame);
 #endif 
    
-    drawCircle(&wp, center, dp._entry._face_radius, CV_RGB(255,0,0), true);
+    drawCircle(&wp, PwPointToCvPoint(center), dp._entry._face_radius, CV_RGB(255,0,0), true);
    // drawRect(&wp, frame_list.middleConsecutiveWithFaces(), CV_RGB(0,0,255), false);
-    drawRect(&wp, frame_list.getBestFace(), CV_RGB(255,255,0), false);
+    drawRect(&wp, PwRectToCvRect(frame_list.getBestFace()), CV_RGB(255,255,0), false);
  
     cvShowImage (WINDOW_NAME, wp._draw_image); 
     cvWaitKey(DRAW_WAIT);
@@ -609,21 +614,21 @@ CroppedFrameList_Adaptive
    
     PwRect face_rect = dp._entry.getFaceRect(dp._face_crop_ratio);
     PwPoint center(dp._entry._face_center.x - face_rect.x, dp._entry._face_center.y - face_rect.y);
-    PwRect face_rect_adjusted = cvRect(0, 0, face_rect.width, face_rect.height);
+    PwRect face_rect_adjusted(0, 0, face_rect.width, face_rect.height);
 
-    cout << rectAsString(cvRect(0, 0, dp._current_frame->width, dp._current_frame->height)) << " : " << rectAsString(face_rect) << " boundary : face first guess" << endl;
+    cout << rectAsString(PwRect(0, 0, dp._current_frame->width, dp._current_frame->height)) << " : " << rectAsString(face_rect) << " boundary : face first guess" << endl;
  
 #if SHOW_ALL_RECTANGLES   
     frame_list.iterateFrameList((void*) &wp, drawCroppedFrame);
 #endif 
    
-    cout << "         outer  frame = " << rectAsString(cvRect(0, 0, dp._current_frame->width, dp._current_frame->height)) << endl;
+    cout << "         outer  frame = " << rectAsString(PwRect(0, 0, dp._current_frame->width, dp._current_frame->height)) << endl;
     cout << "* best position frame = " << rectAsString(offsetRectByRect(position_frame, face_rect)) << endl;
     cout << "***         best face = " << rectAsString(offsetRectByRect(best_face, face_rect)) << endl;
-    drawRect(&wp, face_rect_adjusted, CV_RGB(0,0,255), true);
-    drawCircle(&wp, center, dp._entry._face_radius, CV_RGB(255,0,0), true);
-    drawRect(&wp, position_frame, CV_RGB(255,0,255), false);
-    drawRect(&wp, best_face, CV_RGB(255,255,255), false);
+    drawRect(&wp, PwRectToCvRect(face_rect_adjusted), CV_RGB(0,0,255), true);
+    drawCircle(&wp, PwPointToCvPoint(center), dp._entry._face_radius, CV_RGB(255,0,0), true);
+    drawRect(&wp, PwRectToCvRect(position_frame), CV_RGB(255,0,255), false);
+    drawRect(&wp, PwRectToCvRect(best_face), CV_RGB(255,255,255), false);
     
     cvShowImage (WINDOW_NAME, wp._draw_image); 
     cvWaitKey(DRAW_WAIT);
@@ -661,8 +666,8 @@ static void drawResultImage(const FaceDetectResult& result) {
     PwRect face_rect = result._face_rect; 
     PwRect orig_rect = entry.getFaceRect(1.0);
     
-    drawRect(&wp, face_rect, CV_RGB(255,0,0), false);
-    drawRect(&wp, orig_rect, CV_RGB(0,0,255), false);
+    drawRect(&wp, PwRectToCvRect(face_rect), CV_RGB(255,0,0), false);
+    drawRect(&wp, PwRectToCvRect(orig_rect), CV_RGB(0,0,255), false);
 
     string marked_image_name = entry._image_name + "." + test_type_name + ".marked.jpg";
     cvShowImage (WINDOW_NAME, wp._draw_image); 
@@ -960,9 +965,7 @@ FaceDetectResult processOneImage(DetectorState& dp)  {
     return r;
 }
 
-FaceDetectResult detectInOneImage(DetectorState& dp,
-                               //   const ParamRanges& pr,
-                                   FileEntry& entry) {
+FaceDetectResult detectInOneImage(DetectorState& dp, FileEntry& entry) {
     dp._entry = entry;
    
     IplImage*  image  = cvLoadImage(dp._entry._image_name.c_str());
@@ -971,7 +974,7 @@ FaceDetectResult detectInOneImage(DetectorState& dp,
         abort();
     }
     if (entry._face_radius == 0) {
-        PwRect facet(0, 0, image->width, image->height);
+        PwRect face(0, 0, image->width, image->height);
         entry._face_radius = getRadius(face);
         entry._face_center = getCenter(face);
     }

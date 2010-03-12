@@ -8,6 +8,7 @@
 #include <vector>
 #include <ostream>
 #include <map>
+#include "config.h"
 
 const std::string KEY_IMAGE_NAME    = "IMAGE_NAME";
 const std::string KEY_FACE_CENTER_X = "FACE_CENTER_X";

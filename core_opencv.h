@@ -5,9 +5,12 @@
  *  Created by peter on 11/03/10.
  */
  
+#include "config.h" 
 #include "face_common.h"
   
-PwRect CvRectToPwRect(CvRect rect);
+PwRect  CvRectToPwRect(CvRect rect);
+CvRect  PwRectToCvRect(PwRect rect);
+CvPoint PwPointToCvPoint(PwPoint point);
 
 IplImage*  rotateImage(const IplImage* image, double angle, PwPoint centerIn);
 IplImage*  resizeImage(const IplImage* image, int x_pels, int y_pels);
