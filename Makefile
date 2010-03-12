@@ -144,33 +144,36 @@ CFLAGS += -DNOT_MAC_APP
 # CFLAGS += $(SDLFLAGS)
 
 
-#face_draw.cpp
-#face_draw.h
-#face_io.cpp
-#face_io.h
-#face_calc.cpp				
-#face_calc.h
-#face_results.cpp
-#face_results.h
-#cropped_frames.cpp			
-#cropped_frames.h			
-#face_tracker_adjustable_frame.cpp
+
 				
 #H_FILES = Makefile face_draw.h face_io.h face_results.h cropped_frames.h face_calc.h	
-H_FILES =  face_draw.h face_io.h face_results.h cropped_frames.h face_calc.h	
+H_FILES =  config.h face_common.h  face_util.h face_draw.h face_io.h face_results.h face_calc.h face_csv.h cropped_frames.h core_common.h core_opencv.h 
 
 all: peter_framing_filter 
 
 clean:
 	rm -f makehist *.o core
 
+
 peter_framing_filter:	Makefile  face_draw.o face_io.o face_results.o face_calc.o cropped_frames.o face_tracker_adjustable_frame.o
 	ln -sf libcdef.so.0.0.2 ${LIBDIR}/libcdef.so
 	ln -sf libcdef.so.0.0.2 ${LIBDIR}/libcdef.so.0
 	ln -sf libod3.so.1.0.2 ${LIBDIR}/libod3.so
 	ln -sf libod3.so.1.0.2 ${LIBDIR}/libod3.so.1
-	g++ ${CFLAGS} face_draw.o face_io.o face_results.o face_calc.o cropped_frames.o face_tracker_adjustable_frame.o ${LDFLAGS} -L. -L${LIBDIR} ${CDEF_LIBS} -o peter_framing_filter${EXEEXT}
+	g++ ${CFLAGS} csv.o core_common.o core_opencv.o face_util.o face_draw.o face_io.o face_results.o face_calc.o cropped_frames.o face_tracker_adjustable_frame.o ${LDFLAGS} -L. -L${LIBDIR} ${CDEF_LIBS} -o peter_framing_filter${EXEEXT}
 
+csv.o: ${H_FILES} csv.cpp
+	g++ ${CFLAGS} -c csv.cpp
+	
+core_common.o : ${H_FILES} core_common.cpp
+	g++ ${CFLAGS} -c core_common.cpp
+	
+core_opencv.cpp: ${H_FILES} core_opencv.cpp
+	g++ ${CFLAGS} -c core_opencv.cpp			
+
+face_util.cpp: ${H_FILES} face_util.cpp
+	g++ ${CFLAGS} -c face_util.cpp
+	
 face_draw.o: ${H_FILES} face_draw.cpp
 	g++ ${CFLAGS} -c face_draw.cpp
 
