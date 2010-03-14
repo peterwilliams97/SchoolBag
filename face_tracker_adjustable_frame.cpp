@@ -75,6 +75,9 @@ struct DetectorState {
     IplImage*       _current_frame; 
     CvHaarClassifierCascade* _cascade;  
     CvMemStorage*   _storage;
+    PwRect          _original_size;
+    PwRect          _scaled_size;
+    PwRect          _cropped_size;
   // Params  
     double          _face_crop_ratio; // // (Diameter of area seached)/(face diameter detected by AgeRage)
     double          _scale_factor;  // =1.1, 
@@ -315,12 +318,10 @@ static PwRect findFaceSize(const DetectorState& dp, /* PwRect outer_frame, */ Pw
 #if ADAPTIVE_RECURSIVE
 static CroppedFrameList_Adaptive findFaceCenter(const DetectorState& dp, PwRect base_rect, int min_allowed_width, int min_allowed_height) {
     int    num_steps = ADAPTIVE_NUM_STEPS;    // Max number of steps to search in x and y direction
-    
     int    image_width  = dp._current_frame->width;
     int    image_height = dp._current_frame->height;
     PwRect rect = base_rect;
     
-        
     int dx = (image_width - rect.width)/num_steps;
     int dy = (image_height - rect.height)/num_steps;
     
@@ -456,7 +457,7 @@ CroppedFrameList_Adaptive detectFacesCenter_Adaptive(const DetectorState& dp)   
     base_rect = scaleRectConcentric(base_rect, 1.1);
     PwRect rect = base_rect;
 
-    int dx = (image_width - rect.width)/num_steps;
+    int dx = (image_width  - rect.width )/num_steps;
     int dy = (image_height - rect.height)/num_steps;
     int mid_ix = -1, mid_iy = -1;
     int min_i = -1, max_i = -1;
@@ -677,7 +678,7 @@ static void drawResultImage(const FaceDetectResult& result) {
     cvReleaseImage(&wp._draw_image);
     cvReleaseImage(&scaled_image);
 }
-#define DRAW_RESULT_IMAGE(r) drowResultImage(r)
+#define DRAW_RESULT_IMAGE(r) drawResultImage(r)
 #else
 #define DRAW_RESULT_IMAGE(r)
 #endif                   
@@ -829,13 +830,16 @@ vector<FaceDetectResult>
         cerr << "Could not find '" << dp._entry._image_name << "'" << endl;
         abort();
     }
-    IplImage*  scaled_image = scaleImage640x480(image);
-    IplImage*  image2 = rotateImage(scaled_image, entry.getStraighteningAngle(), entry._face_center); 
-    PwRect face_rect =  entry.getFaceRect(1.0);
+    dp->_original_size = PwRect(0, 0, image->width, image->height);
+    IplImage* scaled_image = scaleImage640x480(image);
+    dp->_scaled_size = PwRect(0, 0, scaled_image->width, scaled_image->height);
+    IplImage* image2 = rotateImage(scaled_image, entry.getStraighteningAngle(), entry._face_center); 
+    PwRect    face_rect =  entry.getFaceRect(1.0);
     dp._face_crop_ratio = calcCropRatio(image, face_rect, MIN_CROP_WIDTH, FACE_CROP_RATIO);
     PwRect crop_rect =  entry.getFaceRect(dp._face_crop_ratio);
     cout << "crop_rect = " << rectAsString(crop_rect)<< endl;
     dp._current_frame = cropImage(image2,  crop_rect);  
+    dp->_cropped_size = crop_rect;
     assert (dp._current_frame );
 
     vector<FaceDetectResult>  results = processOneImage(dp, pr) ;
@@ -957,8 +961,14 @@ FaceDetectResult processOneImage(DetectorState& dp)  {
 #else
     CroppedFrameList_Histogram frame_list = processOneImage_Histogram(dp);
 #endif
-    PwRect best_face_orig_coords = offsetRectByRect(frame_list.getBestFace(), dp._entry.getFaceRect(dp._face_crop_ratio));
-    FaceDetectResult r(dp._entry, dp._cascade_name, best_face_orig_coords);
+ //   PwRect best_face_orig_coords = offsetRectByRect(frame_list.getBestFace(), dp._entry.getFaceRect(dp._face_crop_ratio));
+    PwRect cropped_coords = frame_list.getBestFace();
+    PwRect scaled_coords = offsetRectByRect(frame_list.getBestFace(), dp._cropped_size);
+    double scale_x = (double)dp._scaled_size.width/(double)dp._original_size.width;
+    double scale_y = (double)dp._scaled_size.height/(double)dp._original_size.height;
+    assert(scale_x == scale_y);
+    PwRect original_coords = scaleRectConcentric(scaled_coords, 1.0/scale_x);
+    FaceDetectResult r(dp._entry, dp._cascade_name, original_coords);
     showOneResultFile(r, cout);
    // showOneResultFile(r, pr._output_file);
     DRAW_RESULT_IMAGE(r);
@@ -978,13 +988,18 @@ FaceDetectResult detectInOneImage(DetectorState& dp, FileEntry& entry) {
         entry._face_radius = getRadius(face);
         entry._face_center = getCenter(face);
     }
-
+    dp._original_size = PwRect(0, 0, image->width, image->height);
+    cout << "original image = " << rectAsString(PwRect(0, 0, image->width, image->height)) << endl;
     IplImage*  scaled_image = scaleImage640x480(image);
+    dp._scaled_size = PwRect(0, 0, scaled_image->width, scaled_image->height);
+    cout << "scaled image   = " << rectAsString(PwRect(0, 0, scaled_image->width, scaled_image->height)) << endl;
     IplImage*  image2 = rotateImage(scaled_image, entry.getStraighteningAngle(), entry._face_center); 
+    cout << "rotaated image = " << rectAsString(PwRect(0, 0, image2->width, image2->height)) << endl;
     PwRect face_rect =  entry.getFaceRect(1.0);
     dp._face_crop_ratio = calcCropRatio(image, face_rect, MIN_CROP_WIDTH, FACE_CROP_RATIO);
     PwRect crop_rect =  entry.getFaceRect(dp._face_crop_ratio);
-    cout << "crop_rect = " << rectAsString(crop_rect)<< endl;
+    dp._cropped_size = crop_rect;
+    cout << "crop_rect = " << rectAsString(crop_rect) << endl;
     dp._current_frame = cropImage(image2,  crop_rect);  
     assert (dp._current_frame );
 
@@ -1082,7 +1097,7 @@ int main(int argc, char* argv[]) {
         cerr << "Usage: peter_framing_filter <filename>" << endl;
         return 1;
     }
-     FileEntry entry;
+    FileEntry entry;
     entry._image_name = argv[1];
     FaceDetectResult result = peterFramingFilter(entry) ;
     

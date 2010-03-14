@@ -4,8 +4,10 @@
  *
  *  Created by peter on 11/03/10.
  */
-
+#include <iostream>
 #include "core_opencv.h"
+
+using namespace std;;
 
 PwRect CvRectToPwRect(CvRect rect) {
     return PwRect(rect.x, rect.y, rect.width, rect.height);

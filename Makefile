@@ -155,7 +155,7 @@ clean:
 	rm -f makehist *.o core
 
 
-peter_framing_filter:	Makefile  face_draw.o face_io.o face_results.o face_calc.o cropped_frames.o face_tracker_adjustable_frame.o
+peter_framing_filter: Makefile csv.o core_common.o core_opencv.o face_util.o face_draw.o face_io.o face_results.o face_calc.o cropped_frames.o face_tracker_adjustable_frame.o
 	ln -sf libcdef.so.0.0.2 ${LIBDIR}/libcdef.so
 	ln -sf libcdef.so.0.0.2 ${LIBDIR}/libcdef.so.0
 	ln -sf libod3.so.1.0.2 ${LIBDIR}/libod3.so
@@ -168,10 +168,10 @@ csv.o: ${H_FILES} csv.cpp
 core_common.o : ${H_FILES} core_common.cpp
 	g++ ${CFLAGS} -c core_common.cpp
 	
-core_opencv.cpp: ${H_FILES} core_opencv.cpp
+core_opencv.o: ${H_FILES} core_opencv.cpp
 	g++ ${CFLAGS} -c core_opencv.cpp			
 
-face_util.cpp: ${H_FILES} face_util.cpp
+face_util.o: ${H_FILES} face_util.cpp
 	g++ ${CFLAGS} -c face_util.cpp
 	
 face_draw.o: ${H_FILES} face_draw.cpp
