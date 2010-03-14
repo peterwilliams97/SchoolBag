@@ -653,7 +653,7 @@ static IplImage* scaleImage640x480(IplImage* image) {
 #if DRAW_FACES
 static void drawResultImage(const FaceDetectResult& result) {
     FileEntry  entry = result._entry;
-    IplImage*  image  = cvLoadImage(entry._image_name.c_str());
+    IplImage*  image = cvLoadImage(entry._image_name.c_str());
     if (!image) {
         cerr << "Could not find '" << entry._image_name << "'" << endl;
         abort();
@@ -661,7 +661,7 @@ static void drawResultImage(const FaceDetectResult& result) {
     IplImage*  scaled_image = scaleImage640x480(image);
     cvReleaseImage(&image);
     DrawParams wp;
-    wp._draw_image    = cvCreateImage(cvSize (scaled_image->width, scaled_image->height), IPL_DEPTH_8U, 3);
+    wp._draw_image = cvCreateImage(cvSize(scaled_image->width, scaled_image->height), IPL_DEPTH_8U, 3);
     
     cvFlip (scaled_image, wp._draw_image, 1);
     PwRect face_rect = result._face_rect; 
@@ -707,8 +707,7 @@ struct  ParamRanges {
             _output_file.flush();
             _last_flush_time = t;
         }
-    }
-    
+    } 
 };
 
 /*
@@ -830,16 +829,16 @@ vector<FaceDetectResult>
         cerr << "Could not find '" << dp._entry._image_name << "'" << endl;
         abort();
     }
-    dp->_original_size = PwRect(0, 0, image->width, image->height);
+    dp._original_size = PwRect(0, 0, image->width, image->height);
     IplImage* scaled_image = scaleImage640x480(image);
-    dp->_scaled_size = PwRect(0, 0, scaled_image->width, scaled_image->height);
+    dp._scaled_size = PwRect(0, 0, scaled_image->width, scaled_image->height);
     IplImage* image2 = rotateImage(scaled_image, entry.getStraighteningAngle(), entry._face_center); 
     PwRect    face_rect =  entry.getFaceRect(1.0);
     dp._face_crop_ratio = calcCropRatio(image, face_rect, MIN_CROP_WIDTH, FACE_CROP_RATIO);
     PwRect crop_rect =  entry.getFaceRect(dp._face_crop_ratio);
     cout << "crop_rect = " << rectAsString(crop_rect)<< endl;
     dp._current_frame = cropImage(image2,  crop_rect);  
-    dp->_cropped_size = crop_rect;
+    dp._cropped_size = crop_rect;
     assert (dp._current_frame );
 
     vector<FaceDetectResult>  results = processOneImage(dp, pr) ;
@@ -966,9 +965,11 @@ FaceDetectResult processOneImage(DetectorState& dp)  {
     PwRect scaled_coords = offsetRectByRect(frame_list.getBestFace(), dp._cropped_size);
     double scale_x = (double)dp._scaled_size.width/(double)dp._original_size.width;
     double scale_y = (double)dp._scaled_size.height/(double)dp._original_size.height;
-    assert(scale_x == scale_y);
+    if (fabs((scale_x - scale_y)/(scale_x + scale_y)) > 0.001)
+        cerr << "scale_x = " << setprecision(4) << scale_x  << "scale_y = " << setprecision(4) << scale_y << endl;
+    assert(fabs((scale_x - scale_y)/(scale_x + scale_y)) <= 0.001);
     PwRect original_coords = scaleRectConcentric(scaled_coords, 1.0/scale_x);
-    FaceDetectResult r(dp._entry, dp._cascade_name, original_coords);
+    FaceDetectResult r(dp._entry, dp._cascade_name, scaled_coords);
     showOneResultFile(r, cout);
    // showOneResultFile(r, pr._output_file);
     DRAW_RESULT_IMAGE(r);
